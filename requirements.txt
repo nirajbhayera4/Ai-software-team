@@ -1,0 +1,47 @@
+# ==============================
+# AI Software Team Requirements
+# ==============================
+
+# Core AI Frameworks
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.3.0
+
+# OpenAI
+openai>=1.50.0
+
+# Environment Variables
+python-dotenv>=1.0.1
+
+# Web UI
+streamlit>=1.40.0
+
+# REST API
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Git Integration
+GitPython>=3.1.43
+
+# Data Validation
+pydantic>=2.9.0
+
+# HTTP Requests
+requests>=2.32.3
+
+# Utilities
+tqdm>=4.67.0
+rich>=13.9.0
+
+# Optional: Local LLM Support (Ollama)
+langchain-ollama>=0.2.0
+
+# Optional: Vector Database
+chromadb>=0.5.5
+
+# Optional: Embeddings
+sentence-transformers>=3.2.0
+
+# Optional: Token Counting
+tiktoken>=0.8.0
