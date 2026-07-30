@@ -51,4 +51,11 @@ filename.py
 8.Return only the generated code.
 
 """
-    
+    response=llm.invoke(
+        [
+            HumanMessage(content=prompt)
+        ]
+    )
+    return {
+        "code":response.content
+    }
