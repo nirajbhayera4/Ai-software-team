@@ -5,3 +5,283 @@
   Network URL: http://192.168.31.60:8502
   External URL: http://49.43.156.176:8502
 
++------------------------- Traceback (most recent call last) --------------------------+
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\streamlit\runtime\scriptr |
+| unner\exec_code.py:128 in exec_func_with_error_handling                              |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\streamlit\runtime\scriptr |
+| unner\script_runner.py:669 in code_to_exec                                           |
+|                                                                                      |
+| C:\Users\hp\Desktop\Ai-software-team\ui\app.py:44 in <module>                        |
+|                                                                                      |
+|   41     }                                                                           |
+|   42                                                                                 |
+|   43     with st.spinner("AI Team is working..."):                                   |
+| > 44         result = graph.invoke(initial_state)                                    |
+|   45                                                                                 |
+|   46     st.success("Project Generated Successfully!")                               |
+|   47                                                                                 |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\main.py: |
+| 3913 in invoke                                                                       |
+|                                                                                      |
+|   3910                     chunks.append(chunk)                                      |
+|   3911         else:                                                                 |
+|   3912             # v1: collect interrupts from updates stream                      |
+| > 3913             for chunk in self.stream(                                         |
+|   3914                 input,                                                        |
+|   3915                 config,                                                       |
+|   3916                 context=context,                                              |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\main.py: |
+| 2967 in stream                                                                       |
+|                                                                                      |
+|   2964                 while loop.tick():                                            |
+|   2965                     for task in loop.match_cached_writes():                   |
+|   2966                         loop.output_writes(task.id, task.writes, cached=True) |
+| > 2967                     for _ in runner.tick(                                     |
+|   2968                         [t for t in loop.tasks.values() if not t.writes],     |
+|   2969                         timeout=self.step_timeout,                            |
+|   2970                         get_waiter=get_waiter,                                |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\_runner. |
+| py:207 in tick                                                                       |
+|                                                                                      |
+|   204             t = tasks[0]                                                       |
+|   205             scheduled_error_handler = False                                    |
+|   206             try:                                                               |
+| > 207                 run_with_retry(                                                |
+|   208                     t,                                                         |
+|   209                     retry_policy,                                              |
+|   210                     configurable={                                             |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\_retry.p |
+| y:617 in run_with_retry                                                              |
+|                                                                                      |
+|   614             # clear any writes from previous attempts                          |
+|   615             task.writes.clear()                                                |
+|   616             # run the task                                                     |
+| > 617             return task.proc.invoke(task.input, config)                        |
+|   618         except ParentCommand as exc:                                           |
+|   619             ns: str = config[CONF][CONFIG_KEY_CHECKPOINT_NS]                   |
+|   620             cmd = exc.args[0]                                                  |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\_internal\_runn |
+| able.py:684 in invoke                                                                |
+|                                                                                      |
+|   681                         run = None                                             |
+|   682                     # run in context                                           |
+|   683                     with set_config_context(config, run) as context:           |
+| > 684                         input = context.run(step.invoke, input, config, **kwar |
+|   685                 else:                                                          |
+|   686                     input = step.invoke(input, config)                         |
+|   687         # finish the root run                                                  |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\_internal\_runn |
+| able.py:426 in invoke                                                                |
+|                                                                                      |
+|   423             else:                                                              |
+|   424                 run_manager.on_chain_end(ret)                                  |
+|   425         else:                                                                  |
+| > 426             ret = self.func(*args, **kwargs)                                   |
+|   427         if self.recurse and isinstance(ret, Runnable):                         |
+|   428             return ret.invoke(input, config)                                   |
+|   429         return ret                                                             |
+|                                                                                      |
+| C:\Users\hp\Desktop\Ai-software-team\agents\manager.py:39 in manager                 |
+|                                                                                      |
+|   36     6.Keep the tasks concise.                                                   |
+|   37     7.Return only the numbered tasks list.                                      |
+|   38     """                                                                         |
+| > 39     llm = ChatOpenAI(                                                           |
+|   40         model="gpt-4.1-mini",                                                   |
+|   41         temperature=0.2,                                                        |
+|   42     )                                                                           |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langchain_core\load\seria |
+| lizable.py:118 in __init__                                                           |
+|                                                                                      |
+|   115     # Remove default BaseModel init docstring.                                 |
+|   116     def __init__(self, *args: Any, **kwargs: Any) -> None:                     |
+|   117         """"""  # noqa: D419  # Intentional blank docstring                    |
+| > 118         super().__init__(*args, **kwargs)                                      |
+|   119                                                                                |
+|   120     @classmethod                                                               |
+|   121     def is_lc_serializable(cls) -> bool:                                       |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\pydantic\main.py:253 in   |
+| __init__                                                                             |
+|                                                                                      |
+|    250         """                                                                   |
+|    251         # `__tracebackhide__` tells pytest and some other tools to omit this  |
+|    252         __tracebackhide__ = True                                              |
+| >  253         validated_self = self.__pydantic_validator__.validate_python(data, se |
+|    254         if self is not validated_self:                                        |
+|    255             warnings.warn(                                                    |
+|    256                 'A custom validator is returning a value other than `self`.\n |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langchain_openai\chat_mod |
+| els\base.py:1335 in validate_environment                                             |
+|                                                                                      |
+|   1332                 ),                                                            |
+|   1333                 "api_key": async_api_key_value,                               |
+|   1334             }                                                                 |
+| > 1335             self.root_async_client = openai.AsyncOpenAI(                      |
+|   1336                 **client_params,                                              |
+|   1337                 **async_specific,  # type: ignore[arg-type]                   |
+|   1338             )                                                                 |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\openai\_client.py:829 in  |
+| __init__                                                                             |
+|                                                                                      |
+|    826             and workload_identity is None                                     |
+|    827             and self.admin_api_key is None                                    |
+|    828         ):                                                                    |
+| >  829             raise OpenAIError(                                                |
+|    830                 "Missing credentials. Please pass an `api_key`, `workload_ide |
+|    831             )                                                                 |
+|    832                                                                               |
++--------------------------------------------------------------------------------------+
+OpenAIError: Missing credentials. Please pass an `api_key`, `workload_identity`, 
+`admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.
+[NOTE] During task with name 'manager' and id 'c36fe6bf-0c5c-1c39-3d0e-a95a74fa47f7'
++------------------------- Traceback (most recent call last) --------------------------+
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\streamlit\runtime\scriptr |
+| unner\exec_code.py:128 in exec_func_with_error_handling                              |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\streamlit\runtime\scriptr |
+| unner\script_runner.py:669 in code_to_exec                                           |
+|                                                                                      |
+| C:\Users\hp\Desktop\Ai-software-team\ui\app.py:44 in <module>                        |
+|                                                                                      |
+|   41     }                                                                           |
+|   42                                                                                 |
+|   43     with st.spinner("AI Team is working..."):                                   |
+| > 44         result = graph.invoke(initial_state)                                    |
+|   45                                                                                 |
+|   46     st.success("Project Generated Successfully!")                               |
+|   47                                                                                 |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\main.py: |
+| 3913 in invoke                                                                       |
+|                                                                                      |
+|   3910                     chunks.append(chunk)                                      |
+|   3911         else:                                                                 |
+|   3912             # v1: collect interrupts from updates stream                      |
+| > 3913             for chunk in self.stream(                                         |
+|   3914                 input,                                                        |
+|   3915                 config,                                                       |
+|   3916                 context=context,                                              |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\main.py: |
+| 2967 in stream                                                                       |
+|                                                                                      |
+|   2964                 while loop.tick():                                            |
+|   2965                     for task in loop.match_cached_writes():                   |
+|   2966                         loop.output_writes(task.id, task.writes, cached=True) |
+| > 2967                     for _ in runner.tick(                                     |
+|   2968                         [t for t in loop.tasks.values() if not t.writes],     |
+|   2969                         timeout=self.step_timeout,                            |
+|   2970                         get_waiter=get_waiter,                                |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\_runner. |
+| py:207 in tick                                                                       |
+|                                                                                      |
+|   204             t = tasks[0]                                                       |
+|   205             scheduled_error_handler = False                                    |
+|   206             try:                                                               |
+| > 207                 run_with_retry(                                                |
+|   208                     t,                                                         |
+|   209                     retry_policy,                                              |
+|   210                     configurable={                                             |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\pregel\_retry.p |
+| y:617 in run_with_retry                                                              |
+|                                                                                      |
+|   614             # clear any writes from previous attempts                          |
+|   615             task.writes.clear()                                                |
+|   616             # run the task                                                     |
+| > 617             return task.proc.invoke(task.input, config)                        |
+|   618         except ParentCommand as exc:                                           |
+|   619             ns: str = config[CONF][CONFIG_KEY_CHECKPOINT_NS]                   |
+|   620             cmd = exc.args[0]                                                  |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\_internal\_runn |
+| able.py:684 in invoke                                                                |
+|                                                                                      |
+|   681                         run = None                                             |
+|   682                     # run in context                                           |
+|   683                     with set_config_context(config, run) as context:           |
+| > 684                         input = context.run(step.invoke, input, config, **kwar |
+|   685                 else:                                                          |
+|   686                     input = step.invoke(input, config)                         |
+|   687         # finish the root run                                                  |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langgraph\_internal\_runn |
+| able.py:426 in invoke                                                                |
+|                                                                                      |
+|   423             else:                                                              |
+|   424                 run_manager.on_chain_end(ret)                                  |
+|   425         else:                                                                  |
+| > 426             ret = self.func(*args, **kwargs)                                   |
+|   427         if self.recurse and isinstance(ret, Runnable):                         |
+|   428             return ret.invoke(input, config)                                   |
+|   429         return ret                                                             |
+|                                                                                      |
+| C:\Users\hp\Desktop\Ai-software-team\agents\manager.py:39 in manager                 |
+|                                                                                      |
+|   36     6.Keep the tasks concise.                                                   |
+|   37     7.Return only the numbered tasks list.                                      |
+|   38     """                                                                         |
+| > 39     llm = ChatOpenAI(                                                           |
+|   40         model="gpt-4.1-mini",                                                   |
+|   41         temperature=0.2,                                                        |
+|   42     )                                                                           |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langchain_core\load\seria |
+| lizable.py:118 in __init__                                                           |
+|                                                                                      |
+|   115     # Remove default BaseModel init docstring.                                 |
+|   116     def __init__(self, *args: Any, **kwargs: Any) -> None:                     |
+|   117         """"""  # noqa: D419  # Intentional blank docstring                    |
+| > 118         super().__init__(*args, **kwargs)                                      |
+|   119                                                                                |
+|   120     @classmethod                                                               |
+|   121     def is_lc_serializable(cls) -> bool:                                       |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\pydantic\main.py:253 in   |
+| __init__                                                                             |
+|                                                                                      |
+|    250         """                                                                   |
+|    251         # `__tracebackhide__` tells pytest and some other tools to omit this  |
+|    252         __tracebackhide__ = True                                              |
+| >  253         validated_self = self.__pydantic_validator__.validate_python(data, se |
+|    254         if self is not validated_self:                                        |
+|    255             warnings.warn(                                                    |
+|    256                 'A custom validator is returning a value other than `self`.\n |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\langchain_openai\chat_mod |
+| els\base.py:1335 in validate_environment                                             |
+|                                                                                      |
+|   1332                 ),                                                            |
+|   1333                 "api_key": async_api_key_value,                               |
+|   1334             }                                                                 |
+| > 1335             self.root_async_client = openai.AsyncOpenAI(                      |
+|   1336                 **client_params,                                              |
+|   1337                 **async_specific,  # type: ignore[arg-type]                   |
+|   1338             )                                                                 |
+|                                                                                      |
+| C:\Users\hp\AppData\Roaming\Python\Python313\site-packages\openai\_client.py:829 in  |
+| __init__                                                                             |
+|                                                                                      |
+|    826             and workload_identity is None                                     |
+|    827             and self.admin_api_key is None                                    |
+|    828         ):                                                                    |
+| >  829             raise OpenAIError(                                                |
+|    830                 "Missing credentials. Please pass an `api_key`, `workload_ide |
+|    831             )                                                                 |
+|    832                                                                               |
++--------------------------------------------------------------------------------------+
+OpenAIError: Missing credentials. Please pass an `api_key`, `workload_identity`, 
+`admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.
+[NOTE] During task with name 'manager' and id '1a00cdb1-695a-5de1-453b-b6fb8e8e6a0d'

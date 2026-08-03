@@ -37,7 +37,7 @@ def manager(state):
     7.Return only the numbered tasks list.
     """
     llm = ChatOpenAI(
-        model="gpt-4.1-mini",
+        model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         temperature=0.2,
     )
 

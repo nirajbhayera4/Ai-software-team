@@ -1,6 +1,7 @@
 # ui/app.py
 
 import streamlit as st
+from openai import OpenAIError, RateLimitError
 
 from graph.workflow import graph
 
@@ -40,8 +41,21 @@ if st.button("Generate Project"):
         "tests": "",
     }
 
-    with st.spinner("AI Team is working..."):
-        result = graph.invoke(initial_state)
+    try:
+        with st.spinner("AI Team is working..."):
+            result = graph.invoke(initial_state)
+    except RateLimitError:
+        st.error(
+            "OpenAI quota was exceeded for the configured API key. "
+            "Add billing/quota to that account or set a different OPENAI_API_KEY."
+        )
+        st.stop()
+    except OpenAIError as error:
+        st.error(f"OpenAI API error: {error}")
+        st.stop()
+    except Exception as error:
+        st.error(f"Something went wrong while generating the project: {error}")
+        st.stop()
 
     st.success("Project Generated Successfully!")
 

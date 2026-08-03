@@ -97,7 +97,7 @@ def tester(state):
     
     """
     llm = ChatOpenAI(
-        model="gpt-4.1-mini",
+        model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         temperature=0.2,
     )
 

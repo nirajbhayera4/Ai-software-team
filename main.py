@@ -1,4 +1,5 @@
 from graph.workflow import graph
+from openai import OpenAIError, RateLimitError
 
 
 def main():
@@ -6,7 +7,15 @@ def main():
     print("AI Software Development Team")
     print("=" * 60)
 
-    requirement = input("\nEnter your project requirement:\n> ")
+    try:
+        requirement = input("\nEnter your project requirement:\n> ")
+    except EOFError:
+        print("No project requirement was provided.")
+        return
+
+    if not requirement.strip():
+        print("Please enter a project requirement.")
+        return
 
     initial_state = {
         "requirement": requirement,
@@ -19,7 +28,20 @@ def main():
 
     print("\nGenerating...\n")
 
-    result = graph.invoke(initial_state)
+    try:
+        result = graph.invoke(initial_state)
+    except RateLimitError:
+        print(
+            "OpenAI quota was exceeded for the configured API key. "
+            "Add billing/quota to that account or set a different OPENAI_API_KEY."
+        )
+        return
+    except OpenAIError as error:
+        print(f"OpenAI API error: {error}")
+        return
+    except Exception as error:
+        print(f"Something went wrong while generating the project: {error}")
+        return
 
     print("=" * 60)
     print("PROJECT TASKS")
