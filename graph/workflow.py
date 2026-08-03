@@ -1,26 +1,37 @@
-from langgraph.graph import StateGraph, END
-from state import AgentState
+from typing import TypedDict
+
+from langgraph.graph import END, StateGraph
 from agents.manager import manager
 
 from agents.developer import developer
 from agents.reviewer import reviewer
 from agents.tester import tester
 
-#creating the graph 
-builder=StateGraph(AgentState)
+
+class AgentState(TypedDict, total=False):
+    requirement: str
+    tasks: str
+    code: str
+    review: str
+    tests: str
+    documentation: str
+
+
+# creating the graph
+builder = StateGraph(AgentState)
 
 #==========
-#add the nodes 
+# add the nodes
 #==========
 
-build.add_node("manager", manager);
-build.add_node("developer", developer);
-build.add_node("reviewer", reviewer);
-build.add_node("tester", tester);
+builder.add_node("manager", manager)
+builder.add_node("developer", developer)
+builder.add_node("reviewer", reviewer)
+builder.add_node("tester", tester)
 
 
-#set the entry point 
-build.set_entry_point("manager")
+# set the entry point
+builder.set_entry_point("manager")
 
 
 #create the workflow 
@@ -44,6 +55,6 @@ builder.add_edge(
     END
 )
 
-#compile the graph 
-graph=builder.compile()
+# compile the graph
+graph = builder.compile()
 

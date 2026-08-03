@@ -6,11 +6,6 @@ import os
 
 load_dotenv();
 
-#initialize the LLM
-llm=ChatOpenAI(
-    model="gpt-4.1 -mini",
-    temperature=0.2,
-)
 def reviewer(state):
 
     """
@@ -67,6 +62,11 @@ def reviewer(state):
     Only provide the review.
     
     """
+    llm = ChatOpenAI(
+        model="gpt-4.1-mini",
+        temperature=0.2,
+    )
+
     Response=llm.invoke(
         [
             HumanMessage(content=prompt)

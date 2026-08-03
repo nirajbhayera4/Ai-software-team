@@ -7,11 +7,6 @@ import os
 
 load_dotenv();
 
-#initialize the LLM
-llm=ChatOpenAI(
-    model="gpt-4.1 -mini",
-    temperature=0.2,
-)
 def tester(state):
     """
     Tester agent 
@@ -101,6 +96,11 @@ def tester(state):
     
     
     """
+    llm = ChatOpenAI(
+        model="gpt-4.1-mini",
+        temperature=0.2,
+    )
+
     response=llm.invoke(
         [
             HumanMessage(content=prompt)

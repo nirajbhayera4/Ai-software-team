@@ -7,12 +7,6 @@ import os
 
 load_dotenv();
 
-#initialize the LLM
-llm=ChatOpenAI(
-    model="gpt-4.1 -mini",
-    temperature=0.2,
-)
-
 def developer(state):
     """
     Developer agent 
@@ -51,6 +45,11 @@ filename.py
 8.Return only the generated code.
 
 """
+    llm = ChatOpenAI(
+        model="gpt-4.1-mini",
+        temperature=0.2,
+    )
+
     response=llm.invoke(
         [
             HumanMessage(content=prompt)

@@ -6,12 +6,6 @@ import os
 
 load_dotenv();
 
-#initialize the LLM
-llm=ChatOpenAI(
-    model="gpt-4.1 -mini",
-    temperature=0.2,
-)
-
 def manager(state):
     """
     Manager agent 
@@ -42,6 +36,11 @@ def manager(state):
     6.Keep the tasks concise.
     7.Return only the numbered tasks list.
     """
+    llm = ChatOpenAI(
+        model="gpt-4.1-mini",
+        temperature=0.2,
+    )
+
     response=llm.invoke(
         [
             HumanMessage(content=prompt)

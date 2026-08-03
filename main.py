@@ -3,7 +3,7 @@ from graph.workflow import graph
 
 def main():
     print("=" * 60)
-    print("🤖 AI Software Development Team")
+    print("AI Software Development Team")
     print("=" * 60)
 
     requirement = input("\nEnter your project requirement:\n> ")
@@ -14,7 +14,7 @@ def main():
         "code": "",
         "review": "",
         "tests": "",
-        "documentation": ""
+        "documentation": "",
     }
 
     print("\nGenerating...\n")
@@ -22,37 +22,37 @@ def main():
     result = graph.invoke(initial_state)
 
     print("=" * 60)
-    print("📋 PROJECT TASKS")
+    print("PROJECT TASKS")
     print("=" * 60)
     print(result["tasks"])
 
     print("\n")
 
     print("=" * 60)
-    print("💻 GENERATED CODE")
+    print("GENERATED CODE")
     print("=" * 60)
     print(result["code"])
 
     print("\n")
 
     print("=" * 60)
-    print("🔍 CODE REVIEW")
+    print("CODE REVIEW")
     print("=" * 60)
     print(result["review"])
 
     print("\n")
 
     print("=" * 60)
-    print("🧪 TEST CASES")
+    print("TEST CASES")
     print("=" * 60)
     print(result["tests"])
 
     print("\n")
 
     print("=" * 60)
-    print("📖 DOCUMENTATION")
+    print("DOCUMENTATION")
     print("=" * 60)
-    print(result["documentation"])
+    print(result.get("documentation", ""))
 
 
 if __name__ == "__main__":
