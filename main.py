@@ -17,6 +17,12 @@ def describe_generation_error(error):
             "Add billing/quota to that account or set a different OPENAI_API_KEY."
         )
 
+    if error_name == "AuthenticationError" or "invalid_api_key" in error_text:
+        return (
+            "The configured API key is invalid. Replace LLM_API_KEY or "
+            "OPENAI_API_KEY in your .env file with a valid provider key."
+        )
+
     if error_name.endswith("OpenAIError") or "OpenAI" in error_name:
         return f"OpenAI API error: {error_text}"
 

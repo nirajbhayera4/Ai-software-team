@@ -1,10 +1,5 @@
-#agents/manager.py
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage 
-from dotenv import load_dotenv
-import os 
-
-load_dotenv();
+from agents.llm import create_chat_model
 
 def manager(state):
     """
@@ -36,10 +31,7 @@ def manager(state):
     6.Keep the tasks concise.
     7.Return only the numbered tasks list.
     """
-    llm = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-        temperature=0.2,
-    )
+    llm = create_chat_model(temperature=0.2)
 
     response=llm.invoke(
         [

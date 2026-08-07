@@ -37,6 +37,34 @@ Install dependencies once they are added to `requirements.txt`:
 pip install -r requirements.txt
 ```
 
+Configure the model provider in `.env`. Copy `.env.example` and fill in your
+own values.
+
+For OpenAI:
+
+```env
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4.1-mini
+LLM_API_KEY=your-openai-api-key
+```
+
+For OpenAI-compatible APIs such as OpenRouter, Groq, DeepSeek, or a compatible
+self-hosted gateway:
+
+```env
+LLM_PROVIDER=openai-compatible
+LLM_BASE_URL=https://provider.example.com/openai/v1
+LLM_MODEL=provider-model-name
+LLM_API_KEY=your-provider-api-key
+```
+
+For local Ollama:
+
+```env
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=llama3.1
+```
+
 Run the project:
 
 ```bash

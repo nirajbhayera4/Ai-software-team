@@ -1,10 +1,5 @@
-#agents/reviewer.py
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage 
-from dotenv import load_dotenv
-import os 
-
-load_dotenv();
+from agents.llm import create_chat_model
 
 def reviewer(state):
 
@@ -62,10 +57,7 @@ def reviewer(state):
     Only provide the review.
     
     """
-    llm = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-        temperature=0.2,
-    )
+    llm = create_chat_model(temperature=0.2)
 
     Response=llm.invoke(
         [
