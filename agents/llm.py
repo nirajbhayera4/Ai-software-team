@@ -41,6 +41,9 @@ def create_chat_model(temperature=0.2):
             "Unsupported LLM_PROVIDER. Use openai, openai-compatible, gemini, genai, google, or ollama."
         )
 
+    if api_version:
+        os.environ["OPENAI_API_VERSION"] = api_version
+
     llm_kwargs = {
         "model": model,
         "temperature": temperature,
@@ -49,8 +52,5 @@ def create_chat_model(temperature=0.2):
 
     if base_url:
         llm_kwargs["base_url"] = base_url
-
-    if api_version:
-        llm_kwargs["openai_api_version"] = api_version
 
     return ChatOpenAI(**llm_kwargs)
