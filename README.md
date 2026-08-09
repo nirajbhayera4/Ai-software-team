@@ -24,23 +24,37 @@ main.py      Application entry point
 
 ## Getting Started
 
-Create and activate a virtual environment:
+Create and activate a virtual environment.
+
+### macOS / Linux
 
 ```bash
-python -m venv venv
-venv\Scripts\activate
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-Install dependencies once they are added to `requirements.txt`:
+### Windows
+
+```powershell
+python -m venv venv
+venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Configure the model provider in `.env`. Copy `.env.example` and fill in your
-own values.
+## Configuration
 
-For OpenAI:
+This project uses a `.env` file for secrets and provider configuration.
+Copy `.env.example` to `.env` and fill in your own values.
+
+> The repository already ignores `.env` via `.gitignore`. Do not commit real API
+> keys or credentials to source control.
+
+Example for OpenAI:
 
 ```env
 LLM_PROVIDER=openai
@@ -48,8 +62,7 @@ LLM_MODEL=gpt-4.1-mini
 LLM_API_KEY=your-openai-api-key
 ```
 
-For OpenAI-compatible APIs such as OpenRouter, Groq, DeepSeek, or a compatible
-self-hosted gateway:
+Example for OpenAI-compatible APIs:
 
 ```env
 LLM_PROVIDER=openai-compatible
@@ -58,18 +71,28 @@ LLM_MODEL=provider-model-name
 LLM_API_KEY=your-provider-api-key
 ```
 
-For local Ollama:
+Example for local Ollama:
 
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_MODEL=llama3.1
 ```
 
-Run the project:
+## Run
 
 ```bash
 python main.py
 ```
+
+## GitHub and push protection
+
+If GitHub rejects a push because it detected a secret in history, remove the
+secret from all commits before pushing again.
+
+- Do not keep real API keys in tracked commits.
+- Use `.env.example` for template values.
+- If you need to push, generate a GitHub personal access token (PAT) and use it
+  instead of a password.
 
 ## Status
 
