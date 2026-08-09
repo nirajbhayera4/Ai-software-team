@@ -21,20 +21,24 @@ def create_chat_model(temperature=0.2):
 
     api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+    api_version = os.getenv("LLM_API_VERSION") or os.getenv("OPENAI_API_VERSION")
 
     if not api_key:
         raise ValueError(
             "Missing API key. Set LLM_API_KEY or OPENAI_API_KEY in your .env file."
         )
 
-    if provider == "openai-compatible" and not base_url:
+    google_providers = {"gemini", "genai", "google"}
+    supported_providers = {"openai", "openai-compatible", *google_providers}
+
+    if provider in {"openai-compatible", *google_providers} and not base_url:
         raise ValueError(
-            "Missing base URL. Set LLM_BASE_URL for OpenAI-compatible providers."
+            "Missing base URL. Set LLM_BASE_URL for OpenAI-compatible or Gemini/GenAI providers."
         )
 
-    if provider not in {"openai", "openai-compatible"}:
+    if provider not in supported_providers:
         raise ValueError(
-            "Unsupported LLM_PROVIDER. Use openai, openai-compatible, or ollama."
+            "Unsupported LLM_PROVIDER. Use openai, openai-compatible, gemini, genai, google, or ollama."
         )
 
     llm_kwargs = {
@@ -45,5 +49,8 @@ def create_chat_model(temperature=0.2):
 
     if base_url:
         llm_kwargs["base_url"] = base_url
+
+    if api_version:
+        llm_kwargs["openai_api_version"] = api_version
 
     return ChatOpenAI(**llm_kwargs)
