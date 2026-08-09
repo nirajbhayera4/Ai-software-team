@@ -45,6 +45,21 @@ def describe_generation_error(error):
     return f"Something went wrong while generating the project: {error_text}"
 
 
+@st.cache_data(ttl=3600)
+def generate_project(requirement: str):
+    from graph.workflow import graph
+
+    initial_state = {
+        "requirement": requirement,
+        "tasks": "",
+        "code": "",
+        "review": "",
+        "tests": "",
+    }
+
+    return graph.invoke(initial_state)
+
+
 st.set_page_config(
     page_title="AI Software Team",
     page_icon="AI",
@@ -60,6 +75,7 @@ st.write(
 requirement = st.text_area(
     "Project Requirement",
     height=200,
+    key="requirement",
     placeholder=(
         "Example:\n"
         "Build an Online Food Delivery App with login, payment gateway, "
@@ -67,28 +83,30 @@ requirement = st.text_area(
     ),
 )
 
+if "last_requirement" not in st.session_state:
+    st.session_state["last_requirement"] = ""
+
+if "result" not in st.session_state:
+    st.session_state["result"] = None
+
 if st.button("Generate Project"):
     if requirement.strip() == "":
         st.warning("Please enter a project requirement.")
         st.stop()
 
-    initial_state = {
-        "requirement": requirement,
-        "tasks": "",
-        "code": "",
-        "review": "",
-        "tests": "",
-    }
-
-    try:
-        from graph.workflow import graph
-
+    if st.session_state["last_requirement"] != requirement:
         with st.spinner("AI Team is working..."):
-            result = graph.invoke(initial_state)
-    except Exception as error:
-        st.error(describe_generation_error(error))
-        st.stop()
+            try:
+                st.session_state["result"] = generate_project(requirement)
+                st.session_state["last_requirement"] = requirement
+            except Exception as error:
+                st.error(describe_generation_error(error))
+                st.stop()
+    else:
+        st.success("Using cached output for the same requirement.")
 
+if st.session_state["result"] and st.session_state["last_requirement"] == requirement:
+    result = st.session_state["result"]
     st.success("Project Generated Successfully!")
 
     tab1, tab2, tab3, tab4 = st.tabs(
