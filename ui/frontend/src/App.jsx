@@ -8,6 +8,72 @@ function App() {
   const [result, setResult] = useState(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+
+  function handleLogin(event) {
+    event.preventDefault()
+    setLoginError('')
+
+    if (!username.trim() || !password.trim()) {
+      setLoginError('Please enter both username and password.')
+      return
+    }
+
+    if (username === 'admin' && password === 'password') {
+      setLoggedIn(true)
+      setUsername('')
+      setPassword('')
+      setLoginError('')
+      return
+    }
+
+    setLoginError('Invalid credentials. Use admin / password.')
+  }
+
+  if (!loggedIn) {
+    return (
+      <div className="login-shell">
+        <motion.div
+          className="login-card"
+          initial={{ y: 40, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+        >
+          <div className="login-header">
+            <span className="badge">AI Software Team</span>
+            <h1>Sign in to continue</h1>
+            <p>Authenticate before using the AI generation workflow.</p>
+          </div>
+
+          <form className="login-form" onSubmit={handleLogin}>
+            <label htmlFor="username">Username</label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="admin"
+            />
+
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="password"
+            />
+
+            <button type="submit">Login</button>
+            {loginError && <div className="error-message">{loginError}</div>}
+          </form>
+        </motion.div>
+      </div>
+    )
+  }
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -115,6 +181,10 @@ function App() {
             </div>
           </motion.section>
         )}
+      </motion.main>
+    </div>
+  )
+}
       </motion.main>
     </div>
   )
