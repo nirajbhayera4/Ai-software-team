@@ -88,6 +88,9 @@ python main.py
 
 A separate animated frontend is available at `ui/frontend`.
 
+> Note: the frontend UI is currently under active development, including the landing page,
+> login flow, and backend integration.
+
 ```bash
 cd ui/frontend
 npm install
@@ -112,8 +115,9 @@ secret from all commits before pushing again.
 
 ## Status
 
-This repository is currently a scaffold. The package layout is in place, but the
-agent implementations, workflow logic, tools, and UI still need to be built.
+This repository is currently under active development. The package layout and
+frontend scaffold are in place, but the agent implementations, workflow logic,
+backend API integration, tools, and UI are still being built and refined.
 
 ## Next Steps
 
