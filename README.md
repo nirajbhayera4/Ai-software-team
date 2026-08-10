@@ -84,6 +84,22 @@ OLLAMA_MODEL=llama3.1
 python main.py
 ```
 
+## React Frontend
+
+A separate animated frontend is available at `ui/frontend`.
+
+```bash
+cd ui/frontend
+npm install
+npm run dev
+```
+
+The frontend calls the backend API at `http://localhost:8000`. Run the API with:
+
+```bash
+uvicorn api:app --reload --port 8000
+```
+
 ## GitHub and push protection
 
 If GitHub rejects a push because it detected a secret in history, remove the
