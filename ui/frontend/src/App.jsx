@@ -185,10 +185,6 @@ function App() {
     </div>
   )
 }
-      </motion.main>
-    </div>
-  )
-}
 
 function Panel({ title, content }) {
   return (
