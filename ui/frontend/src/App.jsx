@@ -158,7 +158,7 @@ function App() {
           <div className="footer-copy">
             <p>Ready to experience software planning with AI? Login to continue.</p>
             <p className="footer-credit">
-              Built by Arjun — AI Software Team prototype.
+              Built by NIRAJ BHAYERA — AI Software Team prototype.
               <span>Contact: <a href="mailto:nirajbhayera4@gmail.com">nirajbhayera4@gmail.com</a> | <a href="https://github.com/nirajbhayera4" target="_blank" rel="noreferrer">github.com/nirajbhayera4</a></span>
             </p>
           </div>
