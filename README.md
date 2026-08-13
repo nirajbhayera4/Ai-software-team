@@ -4,6 +4,35 @@ AI Software Team is a starter workspace for experimenting with a multi-agent
 software-development workflow. The project is organized around agent roles,
 shared tools, prompts, a workflow graph, and a small UI entry point.
 
+## Current Architecture
+
+```text
+Web UI Project Dashboard
+        |
+        v
+FastAPI Server
+Auth / Projects / Runs API
+        |
+        v
+Agent Orchestrator
+Manager -> Developer -> Reviewer -> Tester
+        |
+        v
+Execution Sandbox
+Compile/check generated code when enabled
+        |
+        v
+SQLite Database
+Projects / Runs / Agent outputs
+```
+
+The React dashboard stores an auth token locally after login, creates projects,
+starts agent runs, and displays saved outputs. The API persists users, projects,
+runs, and agent outputs in `data/ai_software_team.db`.
+
+By default the sandbox records a skipped status. Set `SANDBOX_ENABLED=true` to
+compile generated Python code during each run.
+
 ## Project Structure
 
 ```text
@@ -12,6 +41,10 @@ graph/       Workflow orchestration
 prompts/     Prompt templates used by agents
 tools/       Shared integrations and helper functions
 ui/          User interface entry point
+db.py        SQLite persistence layer
+api.py       Auth, project, run, and generation API
+orchestrator.py Agent workflow manager
+sandbox.py   Local execution sandbox checks
 main.py      Application entry point
 ```
 
@@ -101,6 +134,13 @@ The frontend calls the backend API at `http://localhost:8000`. Run the API with:
 
 ```bash
 uvicorn api:app --reload --port 8000
+```
+
+Default development login:
+
+```text
+username: admin
+password: password
 ```
 
 ## GitHub and push protection
