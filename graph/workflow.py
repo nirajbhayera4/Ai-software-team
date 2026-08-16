@@ -10,10 +10,10 @@ from agents.tester import tester
 
 class AgentState(TypedDict, total=False):
     requirement: str
-    tasks: str
-    code: str
-    review: str
-    tests: str
+    tasks: dict
+    implementation: dict
+    review: dict
+    test_plan: dict
     documentation: str
 
 

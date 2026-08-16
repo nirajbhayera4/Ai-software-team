@@ -188,6 +188,9 @@ def update_run(run_id, status, final_output=None, error=None):
 
 
 def save_agent_output(run_id, agent_name, output):
+    if isinstance(output, (dict, list)):
+        output = json.dumps(output)
+
     with get_connection() as connection:
         connection.execute(
             """
@@ -234,5 +237,14 @@ def get_run_with_outputs(run_id):
         run_data = dict(run)
         if run_data.get("final_output"):
             run_data["final_output"] = json.loads(run_data["final_output"])
-        run_data["agent_outputs"] = [dict(row) for row in outputs]
+        agent_outputs = []
+        for row in outputs:
+            output = dict(row)
+            try:
+                output["output"] = json.loads(output["output"])
+            except (TypeError, json.JSONDecodeError):
+                pass
+            agent_outputs.append(output)
+
+        run_data["agent_outputs"] = agent_outputs
         return run_data

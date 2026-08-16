@@ -285,9 +285,9 @@ function App() {
 
             <div className="outputs">
               <Output title="Manager Tasks" value={activeRun?.final_output?.tasks} />
-              <Output title="Developer Code" value={activeRun?.final_output?.code} code />
+              <Output title="Developer Output" value={activeRun?.final_output?.implementation} code />
               <Output title="Reviewer Notes" value={activeRun?.final_output?.review} />
-              <Output title="Tester Plan" value={activeRun?.final_output?.tests} />
+              <Output title="Tester Plan" value={activeRun?.final_output?.test_plan} />
               <Output
                 title="Sandbox"
                 value={activeRun?.final_output?.sandbox
@@ -303,10 +303,14 @@ function App() {
 }
 
 function Output({ title, value, code = false }) {
+  const renderedValue = typeof value === 'object' && value !== null
+    ? JSON.stringify(value, null, 2)
+    : value
+
   return (
     <section className={code ? 'panel output code-output' : 'panel output'}>
       <h2>{title}</h2>
-      <pre>{value || 'No output yet.'}</pre>
+      <pre>{renderedValue || 'No output yet.'}</pre>
     </section>
   )
 }

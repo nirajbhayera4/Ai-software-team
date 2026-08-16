@@ -1,25 +1,42 @@
 #agents/tester.py
 
-from langchain_core.messages import HumanMessage 
+from langchain_core.messages import HumanMessage
+
 from agents.llm import create_chat_model
+from agents.structured_output import json_prompt_schema, parse_json_response
 
 def tester(state):
     """
     Tester agent 
     Reads: 
     state["requirement"]
-    state["code"]
+    state["implementation"]
     state["tasks"]
     state["review"]
     
     Writes:
-    state["tests"]
+    state["test_plan"]
     """
     
     requirement=state["requirement"]
-    code=state["code"]
+    implementation=state["implementation"]
     tasks=state["tasks"]
     review=state["review"]
+    schema = {
+        "functional": [
+            {
+                "name": "valid login",
+                "steps": ["Submit valid credentials"],
+                "expected_result": "Access token is returned",
+            }
+        ],
+        "unit": ["Unit test description"],
+        "integration": ["Integration test description"],
+        "edge_cases": ["Edge case description"],
+        "negative": ["Negative test description"],
+        "performance": ["Performance test description"],
+        "security": ["Security test description"],
+    }
     
     prompt=f"""
     You are an experinced software QA tester.
@@ -34,9 +51,9 @@ def tester(state):
     {
         tasks
     }
-    GENERATED CODE:
+    DEVELOPER STRUCTURED OUTPUT:
     {
-    code 
+    implementation
     
     
     }
@@ -53,42 +70,9 @@ def tester(state):
     6.performance test cases(if applicable).
     7.security test cases(if applicable).
     
-    Return your response in the following format :
-    ===================
-    FUCNTIONAL TEST CASES
-    ===================
-    -test 1
-    -test 2
-    ===================
-    UNIT TESTS
-    ===================
-    -test 1
-    -test 2
-    
-    ===================
-    EDGE CASES
-    ===================
-    -case 1 
-    -case 2
-    
-    ===================
-    NEGATIVE TEST CASES
-    ===================
-    -test 1
-    -test 2
-    
-    ===================
-    PERFORMANCE TEST CASES
-    ===================
-    -...
-    
-    ===================
-    SECURITY TEST CASES
-    ===================
-    -...
-    
-    Only return the testing plan.
-    Do not explain the testing plan.
+    Return valid JSON only.
+    Use exactly this JSON shape:
+    {json_prompt_schema(schema)}
     
     
     """
@@ -100,8 +84,16 @@ def tester(state):
         ]
         
     )
-    return {
-        "tests":response.content
+    fallback = {
+        "functional": [],
+        "unit": [],
+        "integration": [],
+        "edge_cases": [],
+        "negative": [],
+        "performance": [],
+        "security": [
+            "The tester returned unstructured test text. Review the raw output before execution."
+        ],
+        "raw_output": response.content,
     }
-    
-    
+    return {"test_plan": parse_json_response(response.content, fallback)}

@@ -17,33 +17,36 @@ def run_project_workflow(project):
 
     state = {
         "requirement": project["requirement"],
-        "tasks": "",
-        "code": "",
-        "review": "",
-        "tests": "",
-        "sandbox": "",
+        "tasks": {},
+        "implementation": {},
+        "review": {},
+        "test_plan": {},
+        "sandbox": {},
     }
 
     try:
         for agent_name, agent_function, output_key in [
             ("manager", manager, "tasks"),
-            ("developer", developer, "code"),
+            ("developer", developer, "implementation"),
             ("reviewer", reviewer, "review"),
-            ("tester", tester, "tests"),
+            ("tester", tester, "test_plan"),
         ]:
             update = agent_function(state)
             state.update(update)
             save_agent_output(run_id, agent_name, state[output_key])
 
-        sandbox_result = run_execution_sandbox(state["code"], state["tests"])
+        sandbox_result = run_execution_sandbox(
+            state["implementation"].get("code", ""),
+            state["test_plan"],
+        )
         state["sandbox"] = sandbox_result
         save_agent_output(run_id, "execution_sandbox", sandbox_result["summary"])
 
         final_output = {
             "tasks": state["tasks"],
-            "code": state["code"],
+            "implementation": state["implementation"],
             "review": state["review"],
-            "tests": state["tests"],
+            "test_plan": state["test_plan"],
             "sandbox": sandbox_result,
         }
         final_status = "completed" if sandbox_result["status"] != "failed" else "failed"

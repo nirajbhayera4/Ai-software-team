@@ -58,10 +58,10 @@ def main():
 
     initial_state = {
         "requirement": requirement,
-        "tasks": "",
-        "code": "",
-        "review": "",
-        "tests": "",
+        "tasks": {},
+        "implementation": {},
+        "review": {},
+        "test_plan": {},
         "documentation": "",
     }
 
@@ -83,9 +83,9 @@ def main():
     print("\n")
 
     print("=" * 60)
-    print("GENERATED CODE")
+    print("DEVELOPER OUTPUT")
     print("=" * 60)
-    print(result["code"])
+    print(result["implementation"])
 
     print("\n")
 
@@ -99,7 +99,7 @@ def main():
     print("=" * 60)
     print("TEST CASES")
     print("=" * 60)
-    print(result["tests"])
+    print(result["test_plan"])
 
     print("\n")
 

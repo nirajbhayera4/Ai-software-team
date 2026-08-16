@@ -1,5 +1,7 @@
-from langchain_core.messages import HumanMessage 
+from langchain_core.messages import HumanMessage
+
 from agents.llm import create_chat_model
+from agents.structured_output import json_prompt_schema, parse_json_response
 
 def reviewer(state):
 
@@ -8,7 +10,7 @@ def reviewer(state):
     Reads:
     state["requirement"]
     state["tasks"]
-    state["code"]
+    state["implementation"]
     
     Writes:
     state["review"]
@@ -16,7 +18,23 @@ def reviewer(state):
     """
     requirement=state["requirement"]
     tasks=state["tasks"]
-    code=state["code"]
+    implementation=state["implementation"]
+    schema = {
+        "overall_rating": 8,
+        "approved": False,
+        "strengths": ["What is working well"],
+        "issues": [
+            {
+                "severity": "medium",
+                "file": "src/auth/login.py",
+                "description": "Problem found",
+                "suggestion": "How to fix it",
+            }
+        ],
+        "missing_functionality": ["Missing requirement"],
+        "security_concerns": ["Security concern"],
+        "suggestions": ["Improvement suggestion"],
+    }
     prompt=f"""
     You are a senior software engineer performing a professional code review.
     Your goal is to review the developer's code.
@@ -25,8 +43,8 @@ def reviewer(state):
     
     TASKS LIST :
     {tasks}
-    GENERATED CODE:
-    {code}
+    DEVELOPER STRUCTURED OUTPUT:
+    {implementation}
     
     
     Review the code based on the following:
@@ -41,20 +59,9 @@ def reviewer(state):
     9.Best practices 
     10.Scalability
     
-    Return your review in this format:
-    Overall Rarting: x/10
-    
-    Strengths:
-    -...
-    
-    Problems Found:
-    -...
-    
-    Suggestions:
-    -...
-    
-    Do NOT rewrite the code. 
-    Only provide the review.
+    Return valid JSON only.
+    Use exactly this JSON shape:
+    {json_prompt_schema(schema)}
     
     """
     llm = create_chat_model(temperature=0.2)
@@ -64,7 +71,20 @@ def reviewer(state):
             HumanMessage(content=prompt)
         ]
     )
-    return {
-        "review":Response.content
+    fallback = {
+        "overall_rating": 0,
+        "approved": False,
+        "strengths": [],
+        "issues": [
+            {
+                "severity": "high",
+                "file": "",
+                "description": "The reviewer returned unstructured review text.",
+                "suggestion": Response.content,
+            }
+        ],
+        "missing_functionality": [],
+        "security_concerns": [],
+        "suggestions": [],
     }
-    
+    return {"review": parse_json_response(Response.content, fallback)}
