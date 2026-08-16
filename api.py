@@ -11,16 +11,20 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from db import (
     create_project,
+    create_task,
     create_user,
     get_project,
     get_run_with_outputs,
+    get_task,
+    get_task_workspace,
     get_user_by_id,
     get_user_by_username,
     initialize_database,
     list_project_runs,
+    list_project_tasks,
     list_projects,
 )
-from orchestrator import run_project_workflow
+from orchestrator import run_project_workflow, run_task_workflow
 from security import (
     DEFAULT_ADMIN_PASSWORD,
     DEFAULT_ADMIN_USERNAME,
@@ -38,7 +42,13 @@ class LoginRequest(BaseModel):
 
 class ProjectRequest(BaseModel):
     name: str
+    requirement: str = ""
+
+
+class TaskRequest(BaseModel):
+    title: str
     requirement: str
+    priority: str = "normal"
 
 
 class GenerateRequest(BaseModel):
@@ -91,6 +101,12 @@ def health_check():
             "web_ui",
             "api_server",
             "agent_orchestrator",
+            "tasks",
+            "agent_runs",
+            "messages",
+            "file_changes",
+            "reviews",
+            "test_runs",
             "developer_agent",
             "reviewer_agent",
             "tester_agent",
@@ -124,12 +140,69 @@ def create_new_project(request: ProjectRequest, user=Depends(current_user)):
     requirement = request.requirement.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Project name must not be empty.")
-    if not requirement:
-        raise HTTPException(status_code=400, detail="Requirement must not be empty.")
 
     project_id = create_project(user["id"], name, requirement)
+    if requirement:
+        create_task(project_id, "Initial requirement", requirement)
+
     project = get_project(project_id, user["id"])
     return {"project": project}
+
+
+@app.get("/projects/{project_id}/tasks")
+def project_tasks(project_id: int, user=Depends(current_user)):
+    project = get_project(project_id, user["id"])
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return {"tasks": list_project_tasks(project_id)}
+
+
+@app.post("/projects/{project_id}/tasks")
+def create_project_task(project_id: int, request: TaskRequest, user=Depends(current_user)):
+    project = get_project(project_id, user["id"])
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    title = request.title.strip()
+    requirement = request.requirement.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Task title must not be empty.")
+    if not requirement:
+        raise HTTPException(status_code=400, detail="Task requirement must not be empty.")
+
+    task_id = create_task(project_id, title, requirement, request.priority.strip() or "normal")
+    return {"task": get_task(task_id)}
+
+
+@app.get("/tasks/{task_id}")
+def task_detail(task_id: int, user=Depends(current_user)):
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    project = get_project(task["project_id"], user["id"])
+    if not project:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    return {"task": get_task_workspace(task_id)}
+
+
+@app.post("/tasks/{task_id}/runs")
+def run_task(task_id: int, user=Depends(current_user)):
+    task = get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    project = get_project(task["project_id"], user["id"])
+    if not project:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    try:
+        result = run_task_workflow(project, task)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+    return result
 
 
 @app.post("/projects/{project_id}/runs")
