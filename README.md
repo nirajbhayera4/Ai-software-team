@@ -28,14 +28,18 @@ Users / Projects / Tasks / Agent outputs
 
 The React dashboard stores an auth token locally after login, creates projects,
 starts agent runs, and displays saved outputs. The API persists users, projects,
-runs, tasks, agent messages, file changes, test runs, reviews, and agent outputs
-through SQLAlchemy models. Local development defaults to SQLite at
+runs, tasks, agent messages, file changes, test runs, reviews, LLM calls, and
+agent outputs through SQLAlchemy models. Local development defaults to SQLite at
 `data/ai_software_team.db`; production should set `DATABASE_URL` to PostgreSQL.
 
 Agent outputs are structured JSON objects instead of plain text blobs. The
 manager returns task objects, the developer returns changed files/code/test
 requirements, the reviewer returns scored findings, and the tester returns a
 categorized test plan.
+
+Each task stores an observability timeline for agent runs and LLM calls. The
+dashboard shows per-agent duration, total task duration, model, input tokens,
+output tokens, latency, estimated cost, status, and errors.
 
 By default the sandbox records a skipped status. Set `SANDBOX_ENABLED=true` to
 run generated Python code checks in a short-lived Docker container. When enabled,
@@ -102,7 +106,12 @@ Example for OpenAI:
 LLM_PROVIDER=openai
 LLM_MODEL=gpt-4.1-mini
 LLM_API_KEY=your-openai-api-key
+LLM_INPUT_COST_PER_1M_TOKENS=0
+LLM_OUTPUT_COST_PER_1M_TOKENS=0
 ```
+
+Set the token cost values for your selected model/provider to enable estimated
+LLM cost tracking. They default to `0` so pricing is not silently hard-coded.
 
 Example for OpenAI-compatible APIs:
 

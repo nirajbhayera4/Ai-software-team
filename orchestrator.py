@@ -50,8 +50,13 @@ def run_task_workflow(project, task):
             ("tester", tester, "test_plan"),
         ]:
             agent_run_id = create_agent_run(task["id"], agent_name, state)
-            update = agent_function(state)
-            state.update(update)
+            state["current_agent_run_id"] = agent_run_id
+            try:
+                update = agent_function(state)
+                state.update(update)
+            except Exception as error:
+                update_agent_run(agent_run_id, "failed", error=str(error))
+                raise
             update_agent_run(agent_run_id, "completed", state[output_key])
             save_message(task["id"], agent_name, state[output_key], agent_run_id)
 
@@ -67,12 +72,17 @@ def run_task_workflow(project, task):
                 save_test_run(task["id"], agent_run_id, "planned", state["test_plan"])
 
         sandbox_run_id = create_agent_run(task["id"], "execution_sandbox", state)
-        sandbox_result = run_execution_sandbox(
-            state["implementation"].get("code", ""),
-            state["test_plan"],
-            dependencies=state["implementation"].get("dependencies", []),
-            test_code=state["implementation"].get("test_code", ""),
-        )
+        state["current_agent_run_id"] = sandbox_run_id
+        try:
+            sandbox_result = run_execution_sandbox(
+                state["implementation"].get("code", ""),
+                state["test_plan"],
+                dependencies=state["implementation"].get("dependencies", []),
+                test_code=state["implementation"].get("test_code", ""),
+            )
+        except Exception as error:
+            update_agent_run(sandbox_run_id, "failed", error=str(error))
+            raise
         state["sandbox"] = sandbox_result
         update_agent_run(sandbox_run_id, sandbox_result["status"], sandbox_result)
         save_message(task["id"], "execution_sandbox", sandbox_result, sandbox_run_id)

@@ -27,6 +27,7 @@ function App() {
   const [selectedProjectId, setSelectedProjectId] = useState(null)
   const [runs, setRuns] = useState([])
   const [activeRun, setActiveRun] = useState(null)
+  const [activeTask, setActiveTask] = useState(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
@@ -76,12 +77,24 @@ function App() {
       await loadRun(data.runs[0].id)
     } else {
       setActiveRun(null)
+      setActiveTask(null)
     }
   }
 
   async function loadRun(runId) {
     const data = await request(`/runs/${runId}`)
     setActiveRun(data.run)
+    const taskId = data.run?.final_output?.task_id
+    if (taskId) {
+      await loadTask(taskId)
+    } else {
+      setActiveTask(null)
+    }
+  }
+
+  async function loadTask(taskId) {
+    const data = await request(`/tasks/${taskId}`)
+    setActiveTask(data.task)
   }
 
   useEffect(() => {
@@ -155,12 +168,16 @@ function App() {
     setError('')
     setStatus('Running manager, developer, reviewer, tester, and sandbox...')
     setActiveRun(null)
+    setActiveTask(null)
 
     try {
       const data = await request(`/projects/${selectedProject.id}/runs`, { method: 'POST' })
       await loadProjects()
       await loadRuns(selectedProject.id)
       await loadRun(data.run_id)
+      if (data.task_id) {
+        await loadTask(data.task_id)
+      }
       setStatus(`Run ${data.status}.`)
     } catch (err) {
       setStatus('')
@@ -177,6 +194,7 @@ function App() {
     setSelectedProjectId(null)
     setRuns([])
     setActiveRun(null)
+    setActiveTask(null)
     setStatus('')
   }
 
@@ -336,6 +354,7 @@ function App() {
             </div>
 
             <div className="outputs">
+              <Observability task={activeTask} />
               <Output title="Manager Tasks" value={activeRun?.final_output?.tasks} />
               <Output title="Developer Output" value={activeRun?.final_output?.implementation} code />
               <Output title="Reviewer Notes" value={activeRun?.final_output?.review} />
@@ -351,6 +370,85 @@ function App() {
         </section>
       </main>
     </div>
+  )
+}
+
+function formatDuration(milliseconds) {
+  if (!milliseconds) return '0.0 sec'
+  return `${(milliseconds / 1000).toFixed(1)} sec`
+}
+
+function formatCost(value) {
+  const amount = Number(value || 0)
+  return amount > 0 ? `$${amount.toFixed(6)}` : '$0.000000'
+}
+
+function statusMark(status) {
+  if (status === 'completed' || status === 'passed') return '✓'
+  if (status === 'failed') return '✗'
+  return '•'
+}
+
+function Observability({ task }) {
+  const agentRuns = task?.agent_runs || []
+  const llmCalls = task?.llm_calls || []
+
+  return (
+    <section className="panel observability">
+      <div className="section-heading">
+        <h2>{task ? `Task #${task.id} observability` : 'Task observability'}</h2>
+        <span>Total: {formatDuration(task?.total_duration_ms)}</span>
+      </div>
+
+      <div className="timeline">
+        {agentRuns.map((run) => (
+          <div className="timeline-row" key={run.id}>
+            <span>{run.agent_name}</span>
+            <strong className={run.status === 'failed' ? 'failed' : 'passed'}>
+              {statusMark(run.status)}
+            </strong>
+            <span>{formatDuration(run.duration_ms)}</span>
+          </div>
+        ))}
+        {agentRuns.length === 0 && <p className="muted">No agent runs recorded yet.</p>}
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Model</th>
+              <th>Input</th>
+              <th>Output</th>
+              <th>Latency</th>
+              <th>Cost</th>
+              <th>Status</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {llmCalls.map((call) => (
+              <tr key={call.id}>
+                <td>{call.agent_name}</td>
+                <td>{call.model}</td>
+                <td>{call.input_tokens}</td>
+                <td>{call.output_tokens}</td>
+                <td>{formatDuration(call.latency_ms)}</td>
+                <td>{formatCost(call.cost_usd)}</td>
+                <td>{call.status}</td>
+                <td>{call.error || '-'}</td>
+              </tr>
+            ))}
+            {llmCalls.length === 0 && (
+              <tr>
+                <td colSpan="8">No LLM calls recorded yet.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   )
 }
 

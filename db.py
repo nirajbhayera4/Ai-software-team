@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     JSON,
@@ -129,6 +130,26 @@ class AgentRun(Base):
     file_changes: Mapped[list["FileChange"]] = relationship(back_populates="agent_run")
     test_runs: Mapped[list["TestRun"]] = relationship(back_populates="agent_run")
     reviews: Mapped[list["Review"]] = relationship(back_populates="agent_run")
+    llm_calls: Mapped[list["LlmCall"]] = relationship(back_populates="agent_run", cascade="all, delete-orphan")
+
+
+class LlmCall(Base):
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), index=True)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(150), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    agent_run: Mapped["AgentRun"] = relationship(back_populates="llm_calls")
 
 
 class AgentMessage(Base):
@@ -259,6 +280,12 @@ def _as_dict(model):
             value = value.isoformat()
         data[column.key] = value
     return data
+
+
+def _duration_ms(started_at, completed_at):
+    if not started_at or not completed_at:
+        return None
+    return int((completed_at - started_at).total_seconds() * 1000)
 
 
 def _decode_json(value):
@@ -444,6 +471,35 @@ def update_agent_run(agent_run_id, status, output=None, error=None):
             agent_run.completed_at = utc_now()
 
 
+def save_llm_call(
+    agent_name,
+    model,
+    input_tokens=0,
+    output_tokens=0,
+    latency_ms=0,
+    cost_usd=0.0,
+    status="completed",
+    error=None,
+    task_id=None,
+    agent_run_id=None,
+):
+    with get_session() as session:
+        session.add(
+            LlmCall(
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+                agent_name=agent_name,
+                model=model,
+                input_tokens=input_tokens or 0,
+                output_tokens=output_tokens or 0,
+                latency_ms=latency_ms or 0,
+                cost_usd=cost_usd or 0.0,
+                status=status,
+                error=error,
+            )
+        )
+
+
 def save_message(task_id, sender, content, agent_run_id=None):
     with get_session() as session:
         session.add(
@@ -568,6 +624,9 @@ def get_task_workspace(task_id):
         reviews = session.scalars(
             select(Review).where(Review.task_id == task_id).order_by(Review.id.asc())
         ).all()
+        llm_calls = session.scalars(
+            select(LlmCall).where(LlmCall.task_id == task_id).order_by(LlmCall.id.asc())
+        ).all()
 
         task_data = _as_dict(task)
         decoded_agent_runs = []
@@ -577,6 +636,7 @@ def get_task_workspace(task_id):
             item["agent_role"] = agent_role
             item["input"] = _decode_json(item.get("input"))
             item["output"] = _decode_json(item.get("output"))
+            item["duration_ms"] = _duration_ms(agent_run.started_at, agent_run.completed_at)
             decoded_agent_runs.append(item)
 
         decoded_messages = []
@@ -598,6 +658,10 @@ def get_task_workspace(task_id):
             decoded_reviews.append(item)
 
         task_data["agent_runs"] = decoded_agent_runs
+        task_data["llm_calls"] = [_as_dict(call) for call in llm_calls]
+        task_data["total_duration_ms"] = sum(
+            item["duration_ms"] or 0 for item in decoded_agent_runs
+        )
         task_data["messages"] = decoded_messages
         task_data["file_changes"] = [_as_dict(change) for change in file_changes]
         task_data["test_runs"] = decoded_test_runs

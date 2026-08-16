@@ -263,6 +263,79 @@ pre {
   gap: 0.8rem;
 }
 
+.observability {
+  display: grid;
+  gap: 1rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-heading span {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.timeline {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px 80px;
+  gap: 0.75rem;
+  align-items: center;
+  border: 1px solid #243044;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #cbd5e1;
+  padding: 0.65rem 0.75rem;
+}
+
+.timeline-row strong {
+  text-align: center;
+}
+
+.timeline-row .passed {
+  color: #86efac;
+}
+
+.timeline-row .failed {
+  color: #fca5a5;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+th,
+td {
+  border-bottom: 1px solid #243044;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  padding: 0.65rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
 .output pre {
   max-height: 340px;
   color: #d1d5db;

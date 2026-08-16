@@ -114,6 +114,7 @@ def health_check():
             "reviews",
             "test_runs",
             "developer_agent",
+            "llm_calls",
             "reviewer_agent",
             "tester_agent",
             "execution_sandbox",

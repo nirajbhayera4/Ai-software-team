@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage
 
-from agents.llm import create_chat_model
+from agents.llm import invoke_agent_llm
 from agents.structured_output import json_prompt_schema, parse_json_response
 
 def manager(state):
@@ -44,12 +44,14 @@ def manager(state):
     8.Use exactly this JSON shape:
     {json_prompt_schema(schema)}
     """
-    llm = create_chat_model(temperature=0.2)
-
-    response=llm.invoke(
+    response = invoke_agent_llm(
+        "manager",
         [
             HumanMessage(content=prompt)
-        ]
+        ],
+        temperature=0.2,
+        task_id=state.get("task", {}).get("id"),
+        agent_run_id=state.get("current_agent_run_id"),
     )
     fallback = {
         "summary": "The manager returned unstructured planning text.",

@@ -2,7 +2,7 @@
 
 from langchain_core.messages import HumanMessage
 
-from agents.llm import create_chat_model
+from agents.llm import invoke_agent_llm
 from agents.structured_output import json_prompt_schema, parse_json_response
 
 def tester(state):
@@ -76,13 +76,14 @@ def tester(state):
     
     
     """
-    llm = create_chat_model(temperature=0.2)
-
-    response=llm.invoke(
+    response = invoke_agent_llm(
+        "tester",
         [
             HumanMessage(content=prompt)
-        ]
-        
+        ],
+        temperature=0.2,
+        task_id=state.get("task", {}).get("id"),
+        agent_run_id=state.get("current_agent_run_id"),
     )
     fallback = {
         "functional": [],
