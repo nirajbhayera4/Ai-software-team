@@ -1,158 +1,284 @@
 import json
-import sqlite3
+import os
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    create_engine,
+    func,
+    select,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
-DATABASE_PATH = Path("data/ai_software_team.db")
+
+DEFAULT_SQLITE_PATH = Path("data/ai_software_team.db")
+
+
+def normalize_database_url(url):
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url
+
+
+DATABASE_URL = normalize_database_url(os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_PATH.as_posix()}"))
 
 
 def utc_now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(150), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    projects: Mapped[list["Project"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    requirement: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="draft")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    owner: Mapped["User"] = relationship(back_populates="projects")
+    tasks: Mapped[list["Task"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    runs: Mapped[list["Run"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    requirement: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="todo")
+    priority: Mapped[str] = mapped_column(String(50), nullable=False, default="normal")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="tasks")
+    agent_runs: Mapped[list["AgentRun"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    agent_messages: Mapped[list["AgentMessage"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    file_changes: Mapped[list["FileChange"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    test_runs: Mapped[list["TestRun"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+    reviews: Mapped[list["Review"]] = relationship(back_populates="task", cascade="all, delete-orphan")
+
+
+class Agent(Base):
+    __tablename__ = "agents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    runs: Mapped[list["AgentRun"]] = relationship(back_populates="agent")
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    agent_id: Mapped[int] = mapped_column(ForeignKey("agents.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    input: Mapped[dict] = mapped_column("input", JSON, nullable=False)
+    output: Mapped[dict | list | str | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    task: Mapped["Task"] = relationship(back_populates="agent_runs")
+    agent: Mapped["Agent"] = relationship(back_populates="runs")
+    messages: Mapped[list["AgentMessage"]] = relationship(back_populates="agent_run")
+    file_changes: Mapped[list["FileChange"]] = relationship(back_populates="agent_run")
+    test_runs: Mapped[list["TestRun"]] = relationship(back_populates="agent_run")
+    reviews: Mapped[list["Review"]] = relationship(back_populates="agent_run")
+
+
+class AgentMessage(Base):
+    __tablename__ = "agent_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    sender: Mapped[str] = mapped_column(String(100), nullable=False)
+    content: Mapped[dict | list | str] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    task: Mapped["Task"] = relationship(back_populates="agent_messages")
+    agent_run: Mapped["AgentRun"] = relationship(back_populates="messages")
+
+
+class FileChange(Base):
+    __tablename__ = "file_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    path: Mapped[str] = mapped_column(Text, nullable=False)
+    purpose: Mapped[str | None] = mapped_column(Text)
+    change_summary: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    task: Mapped["Task"] = relationship(back_populates="file_changes")
+    agent_run: Mapped["AgentRun"] = relationship(back_populates="file_changes")
+
+
+class TestRun(Base):
+    __tablename__ = "test_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    plan: Mapped[dict | list | str] = mapped_column(JSON, nullable=False)
+    logs: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    task: Mapped["Task"] = relationship(back_populates="test_runs")
+    agent_run: Mapped["AgentRun"] = relationship(back_populates="test_runs")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    rating: Mapped[int | None] = mapped_column(Integer)
+    approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    findings: Mapped[dict | list | str] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    task: Mapped["Task"] = relationship(back_populates="reviews")
+    agent_run: Mapped["AgentRun"] = relationship(back_populates="reviews")
+
+
+class Run(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    requirement: Mapped[str] = mapped_column(Text, nullable=False)
+    final_output: Mapped[dict | list | str | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        nullable=False,
+    )
+
+    project: Mapped["Project"] = relationship(back_populates="runs")
+    agent_outputs: Mapped[list["AgentOutput"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+
+
+class AgentOutput(Base):
+    __tablename__ = "agent_outputs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("runs.id"), nullable=False, index=True)
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    output: Mapped[dict | list | str] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    run: Mapped["Run"] = relationship(back_populates="agent_outputs")
+
+
+def _engine_kwargs():
+    if DATABASE_URL.startswith("sqlite"):
+        return {"connect_args": {"check_same_thread": False}}
+    return {}
+
+
+if DATABASE_URL.startswith("sqlite:///"):
+    Path(DATABASE_URL.removeprefix("sqlite:///")).parent.mkdir(parents=True, exist_ok=True)
+
+engine = create_engine(DATABASE_URL, future=True, **_engine_kwargs())
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 
 @contextmanager
-def get_connection():
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
+def get_session():
+    session = SessionLocal()
     try:
-        yield connection
-        connection.commit()
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     finally:
-        connection.close()
+        session.close()
+
+
+def _as_dict(model):
+    if not model:
+        return None
+    data = {}
+    for column in model.__table__.columns:
+        value = getattr(model, column.key)
+        if isinstance(value, datetime):
+            value = value.isoformat()
+        data[column.key] = value
+    return data
+
+
+def _decode_json(value):
+    if not value:
+        return value
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return value
 
 
 def initialize_database():
-    with get_connection() as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS projects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                owner_id INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                requirement TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'draft',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (owner_id) REFERENCES users(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                requirement TEXT NOT NULL,
-                final_output TEXT,
-                error TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (project_id) REFERENCES projects(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS agent_outputs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                run_id INTEGER NOT NULL,
-                agent_name TEXT NOT NULL,
-                output TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (run_id) REFERENCES runs(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS tasks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                requirement TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'todo',
-                priority TEXT NOT NULL DEFAULT 'normal',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (project_id) REFERENCES projects(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS agents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                role TEXT NOT NULL,
-                description TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS agent_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                agent_id INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                input TEXT NOT NULL,
-                output TEXT,
-                error TEXT,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                FOREIGN KEY (agent_id) REFERENCES agents(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                agent_run_id INTEGER,
-                sender TEXT NOT NULL,
-                content TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS file_changes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                agent_run_id INTEGER,
-                path TEXT NOT NULL,
-                purpose TEXT,
-                change_summary TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS test_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                agent_run_id INTEGER,
-                status TEXT NOT NULL,
-                plan TEXT NOT NULL,
-                logs TEXT,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id)
-            );
-
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                agent_run_id INTEGER,
-                rating INTEGER,
-                approved INTEGER NOT NULL DEFAULT 0,
-                findings TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (task_id) REFERENCES tasks(id),
-                FOREIGN KEY (agent_run_id) REFERENCES agent_runs(id)
-            );
-            """
-        )
-        seed_agents(connection)
+    Base.metadata.create_all(bind=engine)
+    with get_session() as session:
+        seed_agents(session)
 
 
-def seed_agents(connection):
+def seed_agents(session):
     now = utc_now()
     agents = [
         ("manager", "Planning", "Breaks project requirements into actionable tasks."),
@@ -161,518 +287,350 @@ def seed_agents(connection):
         ("tester", "QA", "Creates categorized test plans and validation coverage."),
         ("execution_sandbox", "Execution", "Runs local validation checks for generated output."),
     ]
-    connection.executemany(
-        """
-        INSERT OR IGNORE INTO agents (name, role, description, created_at)
-        VALUES (?, ?, ?, ?)
-        """,
-        [(name, role, description, now) for name, role, description in agents],
-    )
+    existing = set(session.scalars(select(Agent.name)).all())
+    for name, role, description in agents:
+        if name not in existing:
+            session.add(Agent(name=name, role=role, description=description, created_at=now))
 
 
 def create_user(username, password_hash):
-    now = utc_now()
-    with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO users (username, password_hash, created_at)
-            VALUES (?, ?, ?)
-            """,
-            (username, password_hash, now),
-        )
-        return cursor.lastrowid
+    with get_session() as session:
+        user = User(username=username, password_hash=password_hash)
+        session.add(user)
+        session.flush()
+        return user.id
 
 
 def get_user_by_username(username):
-    with get_connection() as connection:
-        row = connection.execute(
-            "SELECT * FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
-        return dict(row) if row else None
+    with get_session() as session:
+        return _as_dict(session.scalar(select(User).where(User.username == username)))
 
 
 def get_user_by_id(user_id):
-    with get_connection() as connection:
-        row = connection.execute(
-            "SELECT * FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-        return dict(row) if row else None
+    with get_session() as session:
+        return _as_dict(session.get(User, user_id))
 
 
 def create_project(owner_id, name, requirement):
-    now = utc_now()
-    with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO projects (owner_id, name, requirement, status, created_at, updated_at)
-            VALUES (?, ?, ?, 'draft', ?, ?)
-            """,
-            (owner_id, name, requirement, now, now),
-        )
-        return cursor.lastrowid
+    with get_session() as session:
+        project = Project(owner_id=owner_id, name=name, requirement=requirement)
+        session.add(project)
+        session.flush()
+        return project.id
 
 
 def create_task(project_id, title, requirement, priority="normal"):
     now = utc_now()
-    with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO tasks (project_id, title, requirement, status, priority, created_at, updated_at)
-            VALUES (?, ?, ?, 'todo', ?, ?, ?)
-            """,
-            (project_id, title, requirement, priority, now, now),
-        )
-        connection.execute(
-            "UPDATE projects SET updated_at = ? WHERE id = ?",
-            (now, project_id),
-        )
-        return cursor.lastrowid
+    with get_session() as session:
+        task = Task(project_id=project_id, title=title, requirement=requirement, priority=priority, created_at=now, updated_at=now)
+        session.add(task)
+        project = session.get(Project, project_id)
+        if project:
+            project.updated_at = now
+        session.flush()
+        return task.id
 
 
 def list_projects(owner_id):
-    with get_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT p.*,
-                   (
-                       SELECT status
-                       FROM tasks
-                       WHERE project_id = p.id
-                       ORDER BY id DESC
-                       LIMIT 1
-                   ) AS latest_task_status,
-                   (
-                       SELECT COUNT(*)
-                       FROM tasks
-                       WHERE project_id = p.id
-                   ) AS task_count
-            FROM projects p
-            WHERE p.owner_id = ?
-            ORDER BY p.updated_at DESC
-            """,
-            (owner_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
+    latest_task_status = (
+        select(Task.status)
+        .where(Task.project_id == Project.id)
+        .order_by(Task.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    task_count = (
+        select(func.count(Task.id))
+        .where(Task.project_id == Project.id)
+        .scalar_subquery()
+    )
+    with get_session() as session:
+        rows = session.execute(
+            select(Project, latest_task_status.label("latest_task_status"), task_count.label("task_count"))
+            .where(Project.owner_id == owner_id)
+            .order_by(Project.updated_at.desc())
+        ).all()
+        projects = []
+        for project, latest_status, count in rows:
+            item = _as_dict(project)
+            item["latest_task_status"] = latest_status
+            item["task_count"] = count
+            projects.append(item)
+        return projects
 
 
 def get_project(project_id, owner_id):
-    with get_connection() as connection:
-        row = connection.execute(
-            "SELECT * FROM projects WHERE id = ? AND owner_id = ?",
-            (project_id, owner_id),
-        ).fetchone()
-        return dict(row) if row else None
+    with get_session() as session:
+        project = session.scalar(select(Project).where(Project.id == project_id, Project.owner_id == owner_id))
+        return _as_dict(project)
 
 
 def list_project_tasks(project_id):
-    with get_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT t.*,
-                   (
-                       SELECT status
-                       FROM agent_runs
-                       WHERE task_id = t.id
-                       ORDER BY id DESC
-                       LIMIT 1
-                   ) AS latest_agent_run_status
-            FROM tasks t
-            WHERE t.project_id = ?
-            ORDER BY t.updated_at DESC
-            """,
-            (project_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
+    latest_agent_run_status = (
+        select(AgentRun.status)
+        .where(AgentRun.task_id == Task.id)
+        .order_by(AgentRun.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    with get_session() as session:
+        rows = session.execute(
+            select(Task, latest_agent_run_status.label("latest_agent_run_status"))
+            .where(Task.project_id == project_id)
+            .order_by(Task.updated_at.desc())
+        ).all()
+        tasks = []
+        for task, latest_status in rows:
+            item = _as_dict(task)
+            item["latest_agent_run_status"] = latest_status
+            tasks.append(item)
+        return tasks
 
 
 def get_task(task_id):
-    with get_connection() as connection:
-        row = connection.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
-        return dict(row) if row else None
+    with get_session() as session:
+        return _as_dict(session.get(Task, task_id))
 
 
 def get_task_for_owner(task_id, owner_id):
-    with get_connection() as connection:
-        row = connection.execute(
-            """
-            SELECT t.*
-            FROM tasks t
-            JOIN projects p ON p.id = t.project_id
-            WHERE t.id = ? AND p.owner_id = ?
-            """,
-            (task_id, owner_id),
-        ).fetchone()
-        return dict(row) if row else None
+    with get_session() as session:
+        task = session.scalar(
+            select(Task)
+            .join(Project, Project.id == Task.project_id)
+            .where(Task.id == task_id, Project.owner_id == owner_id)
+        )
+        return _as_dict(task)
 
 
 def update_task_status(task_id, status):
-    with get_connection() as connection:
-        connection.execute(
-            """
-            UPDATE tasks
-            SET status = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (status, utc_now(), task_id),
-        )
+    with get_session() as session:
+        task = session.get(Task, task_id)
+        if task:
+            task.status = status
+            task.updated_at = utc_now()
 
 
 def get_agent_by_name(name):
-    with get_connection() as connection:
-        row = connection.execute(
-            "SELECT * FROM agents WHERE name = ?",
-            (name,),
-        ).fetchone()
-        return dict(row) if row else None
+    with get_session() as session:
+        return _as_dict(session.scalar(select(Agent).where(Agent.name == name)))
 
 
 def create_agent_run(task_id, agent_name, input_payload):
     now = utc_now()
-    agent = get_agent_by_name(agent_name)
-    if not agent:
-        raise ValueError(f"Unknown agent: {agent_name}")
+    with get_session() as session:
+        agent = session.scalar(select(Agent).where(Agent.name == agent_name))
+        if not agent:
+            raise ValueError(f"Unknown agent: {agent_name}")
 
-    with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO agent_runs (task_id, agent_id, status, input, started_at)
-            VALUES (?, ?, 'running', ?, ?)
-            """,
-            (task_id, agent["id"], json.dumps(input_payload), now),
+        agent_run = AgentRun(
+            task_id=task_id,
+            agent_id=agent.id,
+            status="running",
+            input=input_payload,
+            started_at=now,
         )
-        return cursor.lastrowid
+        session.add(agent_run)
+        session.flush()
+        return agent_run.id
 
 
 def update_agent_run(agent_run_id, status, output=None, error=None):
-    with get_connection() as connection:
-        connection.execute(
-            """
-            UPDATE agent_runs
-            SET status = ?, output = ?, error = ?, completed_at = ?
-            WHERE id = ?
-            """,
-            (
-                status,
-                json.dumps(output) if isinstance(output, (dict, list)) else output,
-                error,
-                utc_now(),
-                agent_run_id,
-            ),
-        )
+    with get_session() as session:
+        agent_run = session.get(AgentRun, agent_run_id)
+        if agent_run:
+            agent_run.status = status
+            agent_run.output = output
+            agent_run.error = error
+            agent_run.completed_at = utc_now()
 
 
 def save_message(task_id, sender, content, agent_run_id=None):
-    if isinstance(content, (dict, list)):
-        content = json.dumps(content)
-
-    with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO messages (task_id, agent_run_id, sender, content, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (task_id, agent_run_id, sender, content, utc_now()),
+    with get_session() as session:
+        session.add(
+            AgentMessage(
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+                sender=sender,
+                content=content,
+            )
         )
 
 
 def save_file_changes(task_id, agent_run_id, file_changes):
     rows = []
-    now = utc_now()
     for change in file_changes or []:
         if isinstance(change, str):
-            rows.append((task_id, agent_run_id, change, "", "", now))
+            rows.append(FileChange(task_id=task_id, agent_run_id=agent_run_id, path=change, purpose="", change_summary=""))
             continue
 
         rows.append(
-            (
-                task_id,
-                agent_run_id,
-                change.get("path", ""),
-                change.get("purpose", ""),
-                change.get("change_summary") or change.get("summary", ""),
-                now,
+            FileChange(
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+                path=change.get("path", ""),
+                purpose=change.get("purpose", ""),
+                change_summary=change.get("change_summary") or change.get("summary", ""),
             )
         )
 
     if not rows:
         return
 
-    with get_connection() as connection:
-        connection.executemany(
-            """
-            INSERT INTO file_changes (task_id, agent_run_id, path, purpose, change_summary, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
+    with get_session() as session:
+        session.add_all(rows)
 
 
 def save_review(task_id, agent_run_id, review):
-    with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO reviews (task_id, agent_run_id, rating, approved, findings, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                task_id,
-                agent_run_id,
-                review.get("overall_rating"),
-                1 if review.get("approved") else 0,
-                json.dumps(review),
-                utc_now(),
-            ),
+    with get_session() as session:
+        session.add(
+            Review(
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+                rating=review.get("overall_rating"),
+                approved=bool(review.get("approved")),
+                findings=review,
+            )
         )
 
 
 def save_test_run(task_id, agent_run_id, status, plan, logs=""):
-    with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO test_runs (task_id, agent_run_id, status, plan, logs, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                task_id,
-                agent_run_id,
-                status,
-                json.dumps(plan) if isinstance(plan, (dict, list)) else plan,
-                logs,
-                utc_now(),
-            ),
+    with get_session() as session:
+        session.add(
+            TestRun(
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+                status=status,
+                plan=plan,
+                logs=logs,
+            )
         )
 
 
 def update_project_status(project_id, status):
-    with get_connection() as connection:
-        connection.execute(
-            """
-            UPDATE projects
-            SET status = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (status, utc_now(), project_id),
-        )
+    with get_session() as session:
+        project = session.get(Project, project_id)
+        if project:
+            project.status = status
+            project.updated_at = utc_now()
 
 
 def create_run(project_id, requirement):
     now = utc_now()
-    with get_connection() as connection:
-        cursor = connection.execute(
-            """
-            INSERT INTO runs (project_id, status, requirement, created_at, updated_at)
-            VALUES (?, 'running', ?, ?, ?)
-            """,
-            (project_id, requirement, now, now),
-        )
-        return cursor.lastrowid
+    with get_session() as session:
+        run = Run(project_id=project_id, status="running", requirement=requirement, created_at=now, updated_at=now)
+        session.add(run)
+        session.flush()
+        return run.id
 
 
 def update_run(run_id, status, final_output=None, error=None):
-    with get_connection() as connection:
-        connection.execute(
-            """
-            UPDATE runs
-            SET status = ?, final_output = ?, error = ?, updated_at = ?
-            WHERE id = ?
-            """,
-            (
-                status,
-                json.dumps(final_output) if isinstance(final_output, dict) else final_output,
-                error,
-                utc_now(),
-                run_id,
-            ),
-        )
+    with get_session() as session:
+        run = session.get(Run, run_id)
+        if run:
+            run.status = status
+            run.final_output = final_output
+            run.error = error
+            run.updated_at = utc_now()
 
 
 def save_agent_output(run_id, agent_name, output):
-    if isinstance(output, (dict, list)):
-        output = json.dumps(output)
-
-    with get_connection() as connection:
-        connection.execute(
-            """
-            INSERT INTO agent_outputs (run_id, agent_name, output, created_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (run_id, agent_name, output, utc_now()),
-        )
+    with get_session() as session:
+        session.add(AgentOutput(run_id=run_id, agent_name=agent_name, output=output))
 
 
 def list_project_runs(project_id):
-    with get_connection() as connection:
-        rows = connection.execute(
-            """
-            SELECT *
-            FROM runs
-            WHERE project_id = ?
-            ORDER BY id DESC
-            """,
-            (project_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-
-def _decode_json(value):
-    if not value:
-        return value
-    try:
-        return json.loads(value)
-    except (TypeError, json.JSONDecodeError):
-        return value
+    with get_session() as session:
+        runs = session.scalars(select(Run).where(Run.project_id == project_id).order_by(Run.id.desc())).all()
+        return [_as_dict(run) for run in runs]
 
 
 def get_task_workspace(task_id):
-    with get_connection() as connection:
-        task = connection.execute(
-            "SELECT * FROM tasks WHERE id = ?",
-            (task_id,),
-        ).fetchone()
+    with get_session() as session:
+        task = session.get(Task, task_id)
         if not task:
             return None
 
-        agent_runs = connection.execute(
-            """
-            SELECT ar.*, a.name AS agent_name, a.role AS agent_role
-            FROM agent_runs ar
-            JOIN agents a ON a.id = ar.agent_id
-            WHERE ar.task_id = ?
-            ORDER BY ar.id ASC
-            """,
-            (task_id,),
-        ).fetchall()
+        agent_runs = session.execute(
+            select(AgentRun, Agent.name.label("agent_name"), Agent.role.label("agent_role"))
+            .join(Agent, Agent.id == AgentRun.agent_id)
+            .where(AgentRun.task_id == task_id)
+            .order_by(AgentRun.id.asc())
+        ).all()
+        messages = session.scalars(
+            select(AgentMessage).where(AgentMessage.task_id == task_id).order_by(AgentMessage.id.asc())
+        ).all()
+        file_changes = session.scalars(
+            select(FileChange).where(FileChange.task_id == task_id).order_by(FileChange.id.asc())
+        ).all()
+        test_runs = session.scalars(
+            select(TestRun).where(TestRun.task_id == task_id).order_by(TestRun.id.asc())
+        ).all()
+        reviews = session.scalars(
+            select(Review).where(Review.task_id == task_id).order_by(Review.id.asc())
+        ).all()
 
-        messages = connection.execute(
-            """
-            SELECT *
-            FROM messages
-            WHERE task_id = ?
-            ORDER BY id ASC
-            """,
-            (task_id,),
-        ).fetchall()
+        task_data = _as_dict(task)
+        decoded_agent_runs = []
+        for agent_run, agent_name, agent_role in agent_runs:
+            item = _as_dict(agent_run)
+            item["agent_name"] = agent_name
+            item["agent_role"] = agent_role
+            item["input"] = _decode_json(item.get("input"))
+            item["output"] = _decode_json(item.get("output"))
+            decoded_agent_runs.append(item)
 
-        file_changes = connection.execute(
-            """
-            SELECT *
-            FROM file_changes
-            WHERE task_id = ?
-            ORDER BY id ASC
-            """,
-            (task_id,),
-        ).fetchall()
+        decoded_messages = []
+        for message in messages:
+            item = _as_dict(message)
+            item["content"] = _decode_json(item.get("content"))
+            decoded_messages.append(item)
 
-        test_runs = connection.execute(
-            """
-            SELECT *
-            FROM test_runs
-            WHERE task_id = ?
-            ORDER BY id ASC
-            """,
-            (task_id,),
-        ).fetchall()
+        decoded_test_runs = []
+        for test_run in test_runs:
+            item = _as_dict(test_run)
+            item["plan"] = _decode_json(item.get("plan"))
+            decoded_test_runs.append(item)
 
-        reviews = connection.execute(
-            """
-            SELECT *
-            FROM reviews
-            WHERE task_id = ?
-            ORDER BY id ASC
-            """,
-            (task_id,),
-        ).fetchall()
+        decoded_reviews = []
+        for review in reviews:
+            item = _as_dict(review)
+            item["findings"] = _decode_json(item.get("findings"))
+            decoded_reviews.append(item)
 
-    task_data = dict(task)
-
-    decoded_agent_runs = []
-    for row in agent_runs:
-        item = dict(row)
-        item["input"] = _decode_json(item.get("input"))
-        item["output"] = _decode_json(item.get("output"))
-        decoded_agent_runs.append(item)
-
-    decoded_messages = []
-    for row in messages:
-        item = dict(row)
-        item["content"] = _decode_json(item.get("content"))
-        decoded_messages.append(item)
-
-    decoded_test_runs = []
-    for row in test_runs:
-        item = dict(row)
-        item["plan"] = _decode_json(item.get("plan"))
-        decoded_test_runs.append(item)
-
-    decoded_reviews = []
-    for row in reviews:
-        item = dict(row)
-        item["approved"] = bool(item["approved"])
-        item["findings"] = _decode_json(item.get("findings"))
-        decoded_reviews.append(item)
-
-    task_data["agent_runs"] = decoded_agent_runs
-    task_data["messages"] = decoded_messages
-    task_data["file_changes"] = [dict(row) for row in file_changes]
-    task_data["test_runs"] = decoded_test_runs
-    task_data["reviews"] = decoded_reviews
-    return task_data
+        task_data["agent_runs"] = decoded_agent_runs
+        task_data["messages"] = decoded_messages
+        task_data["file_changes"] = [_as_dict(change) for change in file_changes]
+        task_data["test_runs"] = decoded_test_runs
+        task_data["reviews"] = decoded_reviews
+        return task_data
 
 
 def get_run_with_outputs(run_id):
-    with get_connection() as connection:
-        run = connection.execute(
-            "SELECT * FROM runs WHERE id = ?",
-            (run_id,),
-        ).fetchone()
+    with get_session() as session:
+        run = session.get(Run, run_id)
         if not run:
             return None
 
-        outputs = connection.execute(
-            """
-            SELECT agent_name, output, created_at
-            FROM agent_outputs
-            WHERE run_id = ?
-            ORDER BY id ASC
-            """,
-            (run_id,),
-        ).fetchall()
-
-        run_data = dict(run)
-        if run_data.get("final_output"):
-            try:
-                run_data["final_output"] = json.loads(run_data["final_output"])
-            except json.JSONDecodeError:
-                pass
-        agent_outputs = []
-        for row in outputs:
-            output = dict(row)
-            try:
-                output["output"] = json.loads(output["output"])
-            except (TypeError, json.JSONDecodeError):
-                pass
-            agent_outputs.append(output)
-
-        run_data["agent_outputs"] = agent_outputs
+        outputs = session.scalars(
+            select(AgentOutput).where(AgentOutput.run_id == run_id).order_by(AgentOutput.id.asc())
+        ).all()
+        run_data = _as_dict(run)
+        run_data["final_output"] = _decode_json(run_data.get("final_output"))
+        run_data["agent_outputs"] = []
+        for output in outputs:
+            item = _as_dict(output)
+            item["output"] = _decode_json(item.get("output"))
+            run_data["agent_outputs"].append(item)
         return run_data
 
 
 def get_run_with_outputs_for_owner(run_id, owner_id):
-    with get_connection() as connection:
-        row = connection.execute(
-            """
-            SELECT r.id
-            FROM runs r
-            JOIN projects p ON p.id = r.project_id
-            WHERE r.id = ? AND p.owner_id = ?
-            """,
-            (run_id, owner_id),
-        ).fetchone()
-    if not row:
+    with get_session() as session:
+        run_id_for_owner = session.scalar(
+            select(Run.id)
+            .join(Project, Project.id == Run.project_id)
+            .where(Run.id == run_id, Project.owner_id == owner_id)
+        )
+    if not run_id_for_owner:
         return None
     return get_run_with_outputs(run_id)

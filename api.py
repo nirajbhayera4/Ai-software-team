@@ -109,7 +109,7 @@ def health_check():
             "agent_orchestrator",
             "tasks",
             "agent_runs",
-            "messages",
+            "agent_messages",
             "file_changes",
             "reviews",
             "test_runs",

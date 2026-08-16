@@ -22,13 +22,15 @@ Execution Sandbox
 Compile/check generated code when enabled
         |
         v
-SQLite Database
-Projects / Runs / Agent outputs
+SQLAlchemy Database
+Users / Projects / Tasks / Agent outputs
 ```
 
 The React dashboard stores an auth token locally after login, creates projects,
 starts agent runs, and displays saved outputs. The API persists users, projects,
-runs, and agent outputs in `data/ai_software_team.db`.
+runs, tasks, agent messages, file changes, test runs, reviews, and agent outputs
+through SQLAlchemy models. Local development defaults to SQLite at
+`data/ai_software_team.db`; production should set `DATABASE_URL` to PostgreSQL.
 
 Agent outputs are structured JSON objects instead of plain text blobs. The
 manager returns task objects, the developer returns changed files/code/test
@@ -46,7 +48,7 @@ graph/       Workflow orchestration
 prompts/     Prompt templates used by agents
 tools/       Shared integrations and helper functions
 ui/          User interface entry point
-db.py        SQLite persistence layer
+db.py        SQLAlchemy persistence layer
 api.py       Auth, project, run, and generation API
 orchestrator.py Agent workflow manager
 sandbox.py   Local execution sandbox checks
@@ -114,6 +116,16 @@ Example for local Ollama:
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_MODEL=llama3.1
+```
+
+Database configuration:
+
+```env
+# Local default if omitted:
+DATABASE_URL=sqlite:///data/ai_software_team.db
+
+# Production example:
+DATABASE_URL=postgresql+psycopg://user:password@host:5432/ai_software_team
 ```
 
 ## Run
