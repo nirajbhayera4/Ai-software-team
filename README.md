@@ -30,6 +30,11 @@ The React dashboard stores an auth token locally after login, creates projects,
 starts agent runs, and displays saved outputs. The API persists users, projects,
 runs, and agent outputs in `data/ai_software_team.db`.
 
+Agent outputs are structured JSON objects instead of plain text blobs. The
+manager returns task objects, the developer returns changed files/code/test
+requirements, the reviewer returns scored findings, and the tester returns a
+categorized test plan.
+
 By default the sandbox records a skipped status. Set `SANDBOX_ENABLED=true` to
 compile generated Python code during each run.
 

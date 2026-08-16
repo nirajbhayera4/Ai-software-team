@@ -236,7 +236,10 @@ def get_run_with_outputs(run_id):
 
         run_data = dict(run)
         if run_data.get("final_output"):
-            run_data["final_output"] = json.loads(run_data["final_output"])
+            try:
+                run_data["final_output"] = json.loads(run_data["final_output"])
+            except json.JSONDecodeError:
+                pass
         agent_outputs = []
         for row in outputs:
             output = dict(row)

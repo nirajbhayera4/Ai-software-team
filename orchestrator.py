@@ -40,7 +40,7 @@ def run_project_workflow(project):
             state["test_plan"],
         )
         state["sandbox"] = sandbox_result
-        save_agent_output(run_id, "execution_sandbox", sandbox_result["summary"])
+        save_agent_output(run_id, "execution_sandbox", sandbox_result)
 
         final_output = {
             "tasks": state["tasks"],
