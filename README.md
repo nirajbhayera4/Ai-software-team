@@ -19,7 +19,7 @@ Manager -> Developer -> Reviewer -> Tester
         |
         v
 Execution Sandbox
-Compile/check generated code when enabled
+Containerized generated-code checks
         |
         v
 SQLAlchemy Database
@@ -38,7 +38,9 @@ requirements, the reviewer returns scored findings, and the tester returns a
 categorized test plan.
 
 By default the sandbox records a skipped status. Set `SANDBOX_ENABLED=true` to
-compile generated Python code during each run.
+run generated Python code checks in a short-lived Docker container. When enabled,
+the app refuses to execute generated code on the API server if Docker is not
+available.
 
 ## Project Structure
 
@@ -51,7 +53,7 @@ ui/          User interface entry point
 db.py        SQLAlchemy persistence layer
 api.py       Auth, project, run, and generation API
 orchestrator.py Agent workflow manager
-sandbox.py   Local execution sandbox checks
+sandbox.py   Containerized execution sandbox checks
 main.py      Application entry point
 ```
 
@@ -126,6 +128,22 @@ DATABASE_URL=sqlite:///data/ai_software_team.db
 
 # Production example:
 DATABASE_URL=postgresql+psycopg://user:password@host:5432/ai_software_team
+```
+
+Sandbox configuration:
+
+```env
+# Requires Docker. Runs generated code in an isolated container, not the API host.
+SANDBOX_ENABLED=true
+SANDBOX_DOCKER_IMAGE=python:3.12-slim
+SANDBOX_TIMEOUT_SECONDS=30
+SANDBOX_MEMORY=256m
+SANDBOX_CPUS=1
+SANDBOX_PIDS_LIMIT=128
+
+# Keep false for strict isolation. Set true only if dependency installation must
+# reach package indexes from inside the disposable container.
+SANDBOX_ALLOW_NETWORK=false
 ```
 
 ## Run

@@ -29,6 +29,10 @@ def developer(state):
         ],
         "changes": "Concise implementation summary",
         "code": "Generated code or multi-file code listing",
+        "dependencies": [
+            "pytest==8.3.4",
+        ],
+        "test_code": "Optional executable Python test code for the sandbox.",
         "tests_required": [
             "valid login",
             "invalid password",
@@ -60,6 +64,8 @@ filename.py
 8.Return valid JSON only.
 9.Use exactly this JSON shape:
 {json_prompt_schema(schema)}
+10. Put third-party Python packages needed to run the code in dependencies.
+11. Put executable Python tests in test_code when possible. Use only Python code, not prose.
 
 """
     llm = create_chat_model(temperature=0.2)
@@ -74,6 +80,8 @@ filename.py
         "files_changed": [],
         "changes": "The developer returned unstructured code text.",
         "code": response.content,
+        "dependencies": [],
+        "test_code": "",
         "tests_required": [],
         "assumptions": [],
     }

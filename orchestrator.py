@@ -70,6 +70,8 @@ def run_task_workflow(project, task):
         sandbox_result = run_execution_sandbox(
             state["implementation"].get("code", ""),
             state["test_plan"],
+            dependencies=state["implementation"].get("dependencies", []),
+            test_code=state["implementation"].get("test_code", ""),
         )
         state["sandbox"] = sandbox_result
         update_agent_run(sandbox_run_id, sandbox_result["status"], sandbox_result)
