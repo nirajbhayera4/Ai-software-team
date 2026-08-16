@@ -296,6 +296,20 @@ def get_task(task_id):
         return dict(row) if row else None
 
 
+def get_task_for_owner(task_id, owner_id):
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT t.*
+            FROM tasks t
+            JOIN projects p ON p.id = t.project_id
+            WHERE t.id = ? AND p.owner_id = ?
+            """,
+            (task_id, owner_id),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def update_task_status(task_id, status):
     with get_connection() as connection:
         connection.execute(
@@ -646,3 +660,19 @@ def get_run_with_outputs(run_id):
 
         run_data["agent_outputs"] = agent_outputs
         return run_data
+
+
+def get_run_with_outputs_for_owner(run_id, owner_id):
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT r.id
+            FROM runs r
+            JOIN projects p ON p.id = r.project_id
+            WHERE r.id = ? AND p.owner_id = ?
+            """,
+            (run_id, owner_id),
+        ).fetchone()
+    if not row:
+        return None
+    return get_run_with_outputs(run_id)

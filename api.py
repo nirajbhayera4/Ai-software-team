@@ -14,8 +14,9 @@ from db import (
     create_task,
     create_user,
     get_project,
-    get_run_with_outputs,
     get_task,
+    get_run_with_outputs_for_owner,
+    get_task_for_owner,
     get_task_workspace,
     get_user_by_id,
     get_user_by_username,
@@ -36,6 +37,11 @@ from security import (
 
 
 class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
     username: str
     password: str
 
@@ -122,6 +128,31 @@ def login(request: LoginRequest):
     if not user or not verify_password(request.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
+    return auth_response(user)
+
+
+@app.post("/auth/register", status_code=201)
+def register(request: RegisterRequest):
+    username = request.username.strip()
+    password = request.password
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters.")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if get_user_by_username(username):
+        raise HTTPException(status_code=409, detail="Username is already taken.")
+
+    user_id = create_user(username, hash_password(password))
+    user = get_user_by_id(user_id)
+    return auth_response(user)
+
+
+@app.get("/auth/session")
+def session(user=Depends(current_user)):
+    return {"user": {"id": user["id"], "username": user["username"]}}
+
+
+def auth_response(user):
     return {
         "access_token": create_access_token(user["id"], user["username"]),
         "token_type": "bearer",
@@ -176,12 +207,8 @@ def create_project_task(project_id: int, request: TaskRequest, user=Depends(curr
 
 @app.get("/tasks/{task_id}")
 def task_detail(task_id: int, user=Depends(current_user)):
-    task = get_task(task_id)
+    task = get_task_for_owner(task_id, user["id"])
     if not task:
-        raise HTTPException(status_code=404, detail="Task not found.")
-
-    project = get_project(task["project_id"], user["id"])
-    if not project:
         raise HTTPException(status_code=404, detail="Task not found.")
 
     return {"task": get_task_workspace(task_id)}
@@ -189,13 +216,11 @@ def task_detail(task_id: int, user=Depends(current_user)):
 
 @app.post("/tasks/{task_id}/runs")
 def run_task(task_id: int, user=Depends(current_user)):
-    task = get_task(task_id)
+    task = get_task_for_owner(task_id, user["id"])
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
 
     project = get_project(task["project_id"], user["id"])
-    if not project:
-        raise HTTPException(status_code=404, detail="Task not found.")
 
     try:
         result = run_task_workflow(project, task)
@@ -229,12 +254,8 @@ def project_runs(project_id: int, user=Depends(current_user)):
 
 @app.get("/runs/{run_id}")
 def run_detail(run_id: int, user=Depends(current_user)):
-    run = get_run_with_outputs(run_id)
+    run = get_run_with_outputs_for_owner(run_id, user["id"])
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found.")
-
-    project = get_project(run["project_id"], user["id"])
-    if not project:
         raise HTTPException(status_code=404, detail="Run not found.")
     return {"run": run}
 

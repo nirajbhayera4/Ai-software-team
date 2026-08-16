@@ -13,9 +13,15 @@ function App() {
   const [token, setToken] = useState(() => localStorage.getItem('aiTeamToken') || '')
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('aiTeamUser')
-    return stored ? JSON.parse(stored) : null
+    try {
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      localStorage.removeItem('aiTeamUser')
+      return null
+    }
   })
-  const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'password' })
+  const [authMode, setAuthMode] = useState('login')
+  const [authForm, setAuthForm] = useState({ username: 'admin', password: 'password' })
   const [projectForm, setProjectForm] = useState(emptyProject)
   const [projects, setProjects] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState(null)
@@ -41,6 +47,9 @@ function App() {
 
     const data = await response.json()
     if (!response.ok) {
+      if (response.status === 401) {
+        logout()
+      }
       throw new Error(data.detail || 'Request failed.')
     }
     return data
@@ -50,7 +59,11 @@ function App() {
     if (!token) return
     const data = await request('/projects')
     setProjects(data.projects)
-    if (!selectedProjectId && data.projects.length > 0) {
+    if (data.projects.length === 0) {
+      setSelectedProjectId(null)
+      return
+    }
+    if (!selectedProjectId || !data.projects.some((project) => project.id === selectedProjectId)) {
       setSelectedProjectId(data.projects[0].id)
     }
   }
@@ -76,22 +89,33 @@ function App() {
   }, [token])
 
   useEffect(() => {
+    if (!token) return
+
+    request('/auth/session')
+      .then((data) => {
+        localStorage.setItem('aiTeamUser', JSON.stringify(data.user))
+        setUser(data.user)
+      })
+      .catch((err) => setError(err.message))
+  }, [token])
+
+  useEffect(() => {
     loadRuns(selectedProjectId).catch((err) => setError(err.message))
   }, [selectedProjectId])
 
-  async function handleLogin(event) {
+  async function handleAuth(event) {
     event.preventDefault()
     setError('')
-    setStatus('Signing in...')
+    setStatus(authMode === 'login' ? 'Signing in...' : 'Creating account...')
 
     try {
-      const data = await fetch(`${API_URL}/auth/login`, {
+      const data = await fetch(`${API_URL}/auth/${authMode === 'login' ? 'login' : 'register'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm),
+        body: JSON.stringify(authForm),
       }).then(async (response) => {
         const body = await response.json()
-        if (!response.ok) throw new Error(body.detail || 'Login failed.')
+        if (!response.ok) throw new Error(body.detail || 'Authentication failed.')
         return body
       })
 
@@ -150,8 +174,10 @@ function App() {
     setToken('')
     setUser(null)
     setProjects([])
+    setSelectedProjectId(null)
     setRuns([])
     setActiveRun(null)
+    setStatus('')
   }
 
   if (!token) {
@@ -159,25 +185,51 @@ function App() {
       <main className="login-shell">
         <section className="login-panel">
           <p className="eyebrow">AI Software Team</p>
-          <h1>Project dashboard</h1>
+          <h1>{authMode === 'login' ? 'Project dashboard' : 'Create account'}</h1>
           <p className="muted">
-            Sign in to manage projects, trigger agent runs, inspect outputs, and keep every run stored.
+            {authMode === 'login'
+              ? 'Sign in to manage your projects, trigger agent runs, inspect outputs, and keep every run stored.'
+              : 'Register to get a private project workspace tied to your user account.'}
           </p>
-          <form onSubmit={handleLogin} className="stack">
+          <div className="auth-tabs" role="tablist" aria-label="Authentication mode">
+            <button
+              className={authMode === 'login' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setAuthMode('login')
+                setError('')
+                setStatus('')
+              }}
+            >
+              Login
+            </button>
+            <button
+              className={authMode === 'register' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setAuthMode('register')
+                setError('')
+                setStatus('')
+              }}
+            >
+              Register
+            </button>
+          </div>
+          <form onSubmit={handleAuth} className="stack">
             <label htmlFor="username">Username</label>
             <input
               id="username"
-              value={loginForm.username}
-              onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
+              value={authForm.username}
+              onChange={(event) => setAuthForm({ ...authForm, username: event.target.value })}
             />
             <label htmlFor="password">Password</label>
             <input
               id="password"
               type="password"
-              value={loginForm.password}
-              onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+              value={authForm.password}
+              onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })}
             />
-            <button type="submit">Sign in</button>
+            <button type="submit">{authMode === 'login' ? 'Login' : 'Register'}</button>
           </form>
           {error && <p className="message error">{error}</p>}
           {status && <p className="message">{status}</p>}
