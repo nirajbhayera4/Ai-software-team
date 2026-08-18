@@ -19,6 +19,72 @@ from db import (
 from sandbox import run_execution_sandbox
 
 
+def agent_fallback(agent_name, error):
+    error_text = str(error)
+    base = {
+        "_fallback": True,
+        "_error_type": "agent_failure",
+        "_error": error_text,
+    }
+    if agent_name == "manager":
+        return {
+            **base,
+            "summary": "Manager failed after retry handling. Using a minimal recovery task.",
+            "tasks": [
+                {
+                    "id": "TASK-RECOVERY",
+                    "title": "Recover from manager failure",
+                    "area": "planning",
+                    "description": "Review the original requirement manually because planning failed.",
+                    "depends_on": [],
+                    "acceptance_criteria": ["A human-readable recovery task is available."],
+                }
+            ],
+        }
+    if agent_name == "developer":
+        return {
+            **base,
+            "task": "Developer failed after retry handling.",
+            "files_changed": [],
+            "changes": "No implementation was generated.",
+            "code": "",
+            "dependencies": [],
+            "test_code": "",
+            "tests_required": ["Retry the developer step after the upstream issue is fixed."],
+            "assumptions": [],
+        }
+    if agent_name == "reviewer":
+        return {
+            **base,
+            "overall_rating": 0,
+            "approved": False,
+            "strengths": [],
+            "issues": [
+                {
+                    "severity": "high",
+                    "file": "",
+                    "description": "Reviewer failed after retry handling.",
+                    "suggestion": "Treat the work as rejected until review can be rerun.",
+                }
+            ],
+            "missing_functionality": [],
+            "security_concerns": ["Review did not complete."],
+            "suggestions": [],
+        }
+    if agent_name == "tester":
+        return {
+            **base,
+            "functional": [],
+            "unit": [],
+            "integration": [],
+            "edge_cases": [],
+            "negative": ["Tester failed after retry handling."],
+            "performance": [],
+            "security": ["Testing did not complete."],
+        }
+    return base
+
+
 def run_task_workflow(project, task):
     update_project_status(project["id"], "running")
     update_task_status(task["id"], "running")
@@ -40,6 +106,7 @@ def run_task_workflow(project, task):
         "review": {},
         "test_plan": {},
         "sandbox": {},
+        "workflow_errors": [],
     }
 
     try:
@@ -55,9 +122,23 @@ def run_task_workflow(project, task):
                 update = agent_function(state)
                 state.update(update)
             except Exception as error:
-                update_agent_run(agent_run_id, "failed", error=str(error))
-                raise
-            update_agent_run(agent_run_id, "completed", state[output_key])
+                fallback = agent_fallback(agent_name, error)
+                state[output_key] = fallback
+                state["workflow_errors"].append(
+                    {"agent": agent_name, "error_type": "agent_failure", "error": str(error)}
+                )
+                update_agent_run(agent_run_id, "failed", fallback, error=str(error))
+            else:
+                output = state[output_key]
+                if isinstance(output, dict) and output.get("_fallback"):
+                    state["workflow_errors"].append(
+                        {
+                            "agent": agent_name,
+                            "error_type": output.get("_error_type", "fallback"),
+                            "error": output.get("_error", "Fallback output was used."),
+                        }
+                    )
+                update_agent_run(agent_run_id, "completed", output)
             save_message(task["id"], agent_name, state[output_key], agent_run_id)
 
             if agent_name == "developer":
@@ -81,8 +162,15 @@ def run_task_workflow(project, task):
                 test_code=state["implementation"].get("test_code", ""),
             )
         except Exception as error:
-            update_agent_run(sandbox_run_id, "failed", error=str(error))
-            raise
+            sandbox_result = {
+                "status": "failed",
+                "summary": "Execution sandbox failed unexpectedly.",
+                "logs": str(error),
+                "isolation": "docker",
+            }
+            state["workflow_errors"].append(
+                {"agent": "execution_sandbox", "error_type": "sandbox_failure", "error": str(error)}
+            )
         state["sandbox"] = sandbox_result
         update_agent_run(sandbox_run_id, sandbox_result["status"], sandbox_result)
         save_message(task["id"], "execution_sandbox", sandbox_result, sandbox_run_id)
@@ -100,8 +188,22 @@ def run_task_workflow(project, task):
             "review": state["review"],
             "test_plan": state["test_plan"],
             "sandbox": sandbox_result,
+            "workflow_errors": state["workflow_errors"],
         }
-        final_status = "completed" if sandbox_result["status"] != "failed" else "failed"
+        reviewer_rejected = isinstance(state["review"], dict) and state["review"].get("approved") is False
+        if reviewer_rejected:
+            state["workflow_errors"].append(
+                {
+                    "agent": "reviewer",
+                    "error_type": "reviewer_rejection",
+                    "error": "Reviewer did not approve the implementation.",
+                }
+            )
+            final_output["workflow_errors"] = state["workflow_errors"]
+
+        final_status = "completed"
+        if sandbox_result["status"] == "failed" or reviewer_rejected or state["workflow_errors"]:
+            final_status = "failed"
         update_task_status(task["id"], final_status)
         update_project_status(project["id"], final_status)
 

@@ -51,6 +51,8 @@ def create_chat_model(temperature=0.2):
         "model": model,
         "temperature": temperature,
         "api_key": api_key,
+        "timeout": float(os.getenv("LLM_TIMEOUT_SECONDS", "60") or 60),
+        "max_retries": 0,
     }
 
     if base_url:
@@ -100,42 +102,71 @@ def current_model_name():
     return os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
 
+def _retry_settings():
+    return (
+        max(0, int(os.getenv("LLM_MAX_RETRIES", "2") or 2)),
+        max(0.0, float(os.getenv("LLM_RETRY_BASE_DELAY_SECONDS", "1") or 1)),
+    )
+
+
+def _error_kind(error):
+    name = error.__class__.__name__.lower()
+    message = str(error).lower()
+    if "timeout" in name or "timeout" in message or "timed out" in message:
+        return "timeout"
+    if "ratelimit" in name or "rate limit" in message or "429" in message:
+        return "rate_limit"
+    if "connection" in name or "unavailable" in message or "503" in message:
+        return "api_unavailable"
+    return "api_error"
+
+
 def invoke_agent_llm(agent_name, messages, temperature=0.2, task_id=None, agent_run_id=None):
     model_name = current_model_name()
-    started = time.perf_counter()
-    input_tokens = 0
-    output_tokens = 0
-    try:
-        llm = create_chat_model(temperature=temperature)
-        response = llm.invoke(messages)
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        input_tokens, output_tokens = _usage_from_response(response)
-        save_llm_call(
-            agent_name=agent_name,
-            model=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            latency_ms=latency_ms,
-            cost_usd=_cost_usd(input_tokens, output_tokens),
-            status="completed",
-            task_id=task_id,
-            agent_run_id=agent_run_id,
-        )
-        return response
-    except Exception as error:
-        latency_ms = int((time.perf_counter() - started) * 1000)
-        if not input_tokens:
-            input_tokens = max(0, len(_message_text(messages)) // 4)
-        save_llm_call(
-            agent_name=agent_name,
-            model=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            latency_ms=latency_ms,
-            cost_usd=_cost_usd(input_tokens, output_tokens),
-            status="failed",
-            error=str(error),
-            task_id=task_id,
-            agent_run_id=agent_run_id,
-        )
-        raise
+    max_retries, base_delay = _retry_settings()
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        started = time.perf_counter()
+        input_tokens = 0
+        output_tokens = 0
+        try:
+            llm = create_chat_model(temperature=temperature)
+            response = llm.invoke(messages)
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            input_tokens, output_tokens = _usage_from_response(response)
+            save_llm_call(
+                agent_name=agent_name,
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                latency_ms=latency_ms,
+                cost_usd=_cost_usd(input_tokens, output_tokens),
+                status="completed",
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+            )
+            return response
+        except Exception as error:
+            last_error = error
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            if not input_tokens:
+                input_tokens = max(0, len(_message_text(messages)) // 4)
+            is_final_attempt = attempt >= max_retries
+            status = "failed" if is_final_attempt else "retrying"
+            save_llm_call(
+                agent_name=agent_name,
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                latency_ms=latency_ms,
+                cost_usd=_cost_usd(input_tokens, output_tokens),
+                status=status,
+                error=f"{_error_kind(error)} on attempt {attempt + 1}/{max_retries + 1}: {error}",
+                task_id=task_id,
+                agent_run_id=agent_run_id,
+            )
+            if not is_final_attempt and base_delay:
+                time.sleep(base_delay * (2 ** attempt))
+
+    raise last_error

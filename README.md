@@ -41,6 +41,12 @@ Each task stores an observability timeline for agent runs and LLM calls. The
 dashboard shows per-agent duration, total task duration, model, input tokens,
 output tokens, latency, estimated cost, status, and errors.
 
+LLM calls are retried with configurable timeout and exponential backoff. Failed
+attempts are recorded as `retrying`/`failed` observability rows. If an agent still
+fails after retries, the workflow saves a structured fallback/error output and
+continues where possible instead of crashing the whole run. Sandbox/test failure
+and reviewer rejection mark the final workflow status as failed.
+
 By default the sandbox records a skipped status. Set `SANDBOX_ENABLED=true` to
 run generated Python code checks in a short-lived Docker container. When enabled,
 the app refuses to execute generated code on the API server if Docker is not
@@ -108,6 +114,9 @@ LLM_MODEL=gpt-4.1-mini
 LLM_API_KEY=your-openai-api-key
 LLM_INPUT_COST_PER_1M_TOKENS=0
 LLM_OUTPUT_COST_PER_1M_TOKENS=0
+LLM_TIMEOUT_SECONDS=60
+LLM_MAX_RETRIES=2
+LLM_RETRY_BASE_DELAY_SECONDS=1
 ```
 
 Set the token cost values for your selected model/provider to enable estimated

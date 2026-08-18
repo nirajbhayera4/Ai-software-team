@@ -13,7 +13,14 @@ def parse_json_response(content, fallback):
 
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as error:
+        if isinstance(fallback, dict):
+            return {
+                **fallback,
+                "_fallback": True,
+                "_error_type": "malformed_model_output",
+                "_error": str(error),
+            }
         return fallback
 
 
