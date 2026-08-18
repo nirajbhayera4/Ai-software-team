@@ -9,6 +9,13 @@ const emptyProject = {
   requirement: '',
 }
 
+function formatRequestError(error) {
+  if (error instanceof TypeError) {
+    return `Could not reach the API at ${API_URL}. Start the backend and make sure CORS allows this frontend origin.`
+  }
+  return error.message || 'Request failed.'
+}
+
 function App() {
   const [token, setToken] = useState(() => localStorage.getItem('aiTeamToken') || '')
   const [user, setUser] = useState(() => {
@@ -50,7 +57,7 @@ function App() {
       },
     })
 
-    const data = await response.json()
+    const data = await response.json().catch(() => ({}))
     if (!response.ok) {
       if (response.status === 401) {
         logout()
@@ -116,8 +123,8 @@ function App() {
   }
 
   useEffect(() => {
-    loadProjects().catch((err) => setError(err.message))
-    loadBenchmarks().catch((err) => setError(err.message))
+    loadProjects().catch((err) => setError(formatRequestError(err)))
+    loadBenchmarks().catch((err) => setError(formatRequestError(err)))
   }, [token])
 
   useEffect(() => {
@@ -128,11 +135,11 @@ function App() {
         localStorage.setItem('aiTeamUser', JSON.stringify(data.user))
         setUser(data.user)
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(formatRequestError(err)))
   }, [token])
 
   useEffect(() => {
-    loadRuns(selectedProjectId).catch((err) => setError(err.message))
+    loadRuns(selectedProjectId).catch((err) => setError(formatRequestError(err)))
   }, [selectedProjectId])
 
   async function handleAuth(event) {
@@ -146,7 +153,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(authForm),
       }).then(async (response) => {
-        const body = await response.json()
+        const body = await response.json().catch(() => ({}))
         if (!response.ok) throw new Error(body.detail || 'Authentication failed.')
         return body
       })
@@ -158,7 +165,7 @@ function App() {
       setStatus('')
     } catch (err) {
       setStatus('')
-      setError(err.message)
+      setError(formatRequestError(err))
     }
   }
 
@@ -178,7 +185,7 @@ function App() {
       setStatus('Project created.')
     } catch (err) {
       setStatus('')
-      setError(err.message)
+      setError(formatRequestError(err))
     }
   }
 
@@ -200,7 +207,7 @@ function App() {
       setStatus(`Run ${data.status}.`)
     } catch (err) {
       setStatus('')
-      setError(err.message)
+      setError(formatRequestError(err))
     }
   }
 
@@ -221,7 +228,7 @@ function App() {
       setStatus(`Benchmark ${data.summary.tasks_completed} completed.`)
     } catch (err) {
       setStatus('')
-      setError(err.message)
+      setError(formatRequestError(err))
     }
   }
 
@@ -417,7 +424,7 @@ function App() {
                       className={activeRun?.id === run.id ? 'run-item active' : 'run-item'}
                       key={run.id}
                       type="button"
-                      onClick={() => loadRun(run.id).catch((err) => setError(err.message))}
+                      onClick={() => loadRun(run.id).catch((err) => setError(formatRequestError(err)))}
                     >
                       <span>Run #{run.id}</span>
                       <strong>{run.status}</strong>
@@ -453,7 +460,7 @@ function App() {
                     className={activeRun?.id === run.id ? 'run-item active' : 'run-item'}
                     key={run.id}
                     type="button"
-                    onClick={() => loadRun(run.id).catch((err) => setError(err.message))}
+                    onClick={() => loadRun(run.id).catch((err) => setError(formatRequestError(err)))}
                   >
                     <span>Run #{run.id}</span>
                     <strong>{run.status}</strong>

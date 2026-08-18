@@ -6,6 +6,10 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("APP_SECRET_KEY")
 DEFAULT_ADMIN_USERNAME = os.getenv("APP_ADMIN_USERNAME", "admin")
