@@ -1,3 +1,5 @@
+import time
+
 from agents.developer import developer
 from agents.manager import manager
 from agents.reviewer import reviewer
@@ -16,7 +18,11 @@ from db import (
     update_run,
     update_task_status,
 )
+from logging_config import get_logger
 from sandbox import run_execution_sandbox
+
+
+logger = get_logger(__name__)
 
 
 def agent_fallback(agent_name, error):
@@ -86,6 +92,16 @@ def agent_fallback(agent_name, error):
 
 
 def run_task_workflow(project, task):
+    workflow_started = time.perf_counter()
+    logger.info(
+        "task workflow started",
+        extra={
+            "event": "task_workflow_started",
+            "project_id": project["id"],
+            "task_id": task["id"],
+            "status": "running",
+        },
+    )
     update_project_status(project["id"], "running")
     update_task_status(task["id"], "running")
     save_message(task["id"], "user", task["requirement"])
@@ -116,18 +132,42 @@ def run_task_workflow(project, task):
             ("reviewer", reviewer, "review"),
             ("tester", tester, "test_plan"),
         ]:
+            agent_started = time.perf_counter()
             agent_run_id = create_agent_run(task["id"], agent_name, state)
             state["current_agent_run_id"] = agent_run_id
+            logger.info(
+                "agent started",
+                extra={
+                    "event": "agent_started",
+                    "project_id": project["id"],
+                    "task_id": task["id"],
+                    "agent": agent_name,
+                    "status": "running",
+                },
+            )
             try:
                 update = agent_function(state)
                 state.update(update)
             except Exception as error:
+                duration_ms = int((time.perf_counter() - agent_started) * 1000)
                 fallback = agent_fallback(agent_name, error)
                 state[output_key] = fallback
                 state["workflow_errors"].append(
                     {"agent": agent_name, "error_type": "agent_failure", "error": str(error)}
                 )
                 update_agent_run(agent_run_id, "failed", fallback, error=str(error))
+                logger.exception(
+                    "agent failed",
+                    extra={
+                        "event": "agent_failed",
+                        "project_id": project["id"],
+                        "task_id": task["id"],
+                        "agent": agent_name,
+                        "duration_ms": duration_ms,
+                        "status": "failed",
+                        "error": str(error),
+                    },
+                )
             else:
                 output = state[output_key]
                 if isinstance(output, dict) and output.get("_fallback"):
@@ -139,6 +179,17 @@ def run_task_workflow(project, task):
                         }
                     )
                 update_agent_run(agent_run_id, "completed", output)
+                logger.info(
+                    "agent completed",
+                    extra={
+                        "event": "agent_completed",
+                        "project_id": project["id"],
+                        "task_id": task["id"],
+                        "agent": agent_name,
+                        "duration_ms": int((time.perf_counter() - agent_started) * 1000),
+                        "status": "completed",
+                    },
+                )
             save_message(task["id"], agent_name, state[output_key], agent_run_id)
 
             if agent_name == "developer":
@@ -154,6 +205,17 @@ def run_task_workflow(project, task):
 
         sandbox_run_id = create_agent_run(task["id"], "execution_sandbox", state)
         state["current_agent_run_id"] = sandbox_run_id
+        sandbox_started = time.perf_counter()
+        logger.info(
+            "sandbox started",
+            extra={
+                "event": "sandbox_started",
+                "project_id": project["id"],
+                "task_id": task["id"],
+                "agent": "execution_sandbox",
+                "status": "running",
+            },
+        )
         try:
             sandbox_result = run_execution_sandbox(
                 state["implementation"].get("code", ""),
@@ -171,8 +233,31 @@ def run_task_workflow(project, task):
             state["workflow_errors"].append(
                 {"agent": "execution_sandbox", "error_type": "sandbox_failure", "error": str(error)}
             )
+            logger.exception(
+                "sandbox failed",
+                extra={
+                    "event": "sandbox_failed",
+                    "project_id": project["id"],
+                    "task_id": task["id"],
+                    "agent": "execution_sandbox",
+                    "duration_ms": int((time.perf_counter() - sandbox_started) * 1000),
+                    "status": "failed",
+                    "error": str(error),
+                },
+            )
         state["sandbox"] = sandbox_result
         update_agent_run(sandbox_run_id, sandbox_result["status"], sandbox_result)
+        logger.info(
+            "sandbox completed",
+            extra={
+                "event": "sandbox_completed",
+                "project_id": project["id"],
+                "task_id": task["id"],
+                "agent": "execution_sandbox",
+                "duration_ms": int((time.perf_counter() - sandbox_started) * 1000),
+                "status": sandbox_result["status"],
+            },
+        )
         save_message(task["id"], "execution_sandbox", sandbox_result, sandbox_run_id)
         save_test_run(
             task["id"],
@@ -200,12 +285,32 @@ def run_task_workflow(project, task):
                 }
             )
             final_output["workflow_errors"] = state["workflow_errors"]
+            logger.warning(
+                "reviewer rejected implementation",
+                extra={
+                    "event": "reviewer_rejection",
+                    "project_id": project["id"],
+                    "task_id": task["id"],
+                    "agent": "reviewer",
+                    "status": "failed",
+                },
+            )
 
         final_status = "completed"
         if sandbox_result["status"] == "failed" or reviewer_rejected or state["workflow_errors"]:
             final_status = "failed"
         update_task_status(task["id"], final_status)
         update_project_status(project["id"], final_status)
+        logger.info(
+            "task workflow completed",
+            extra={
+                "event": "task_workflow_completed",
+                "project_id": project["id"],
+                "task_id": task["id"],
+                "duration_ms": int((time.perf_counter() - workflow_started) * 1000),
+                "status": final_status,
+            },
+        )
 
         return {
             "task_id": task["id"],
@@ -215,10 +320,30 @@ def run_task_workflow(project, task):
     except Exception as error:
         update_task_status(task["id"], "failed")
         update_project_status(project["id"], "failed")
+        logger.exception(
+            "task workflow crashed",
+            extra={
+                "event": "task_workflow_crashed",
+                "project_id": project["id"],
+                "task_id": task["id"],
+                "duration_ms": int((time.perf_counter() - workflow_started) * 1000),
+                "status": "failed",
+                "error": str(error),
+            },
+        )
         raise
 
 
 def run_project_workflow(project):
+    project_started = time.perf_counter()
+    logger.info(
+        "project workflow started",
+        extra={
+            "event": "project_workflow_started",
+            "project_id": project["id"],
+            "status": "running",
+        },
+    )
     task_id = create_task(
         project["id"],
         "Initial requirement",
@@ -244,4 +369,15 @@ def run_project_workflow(project):
         }[agent_name]
         save_agent_output(run_id, agent_name, result.get(key, {}))
 
+    logger.info(
+        "project workflow completed",
+        extra={
+            "event": "project_workflow_completed",
+            "project_id": project["id"],
+            "task_id": task_id,
+            "run_id": run_id,
+            "duration_ms": int((time.perf_counter() - project_started) * 1000),
+            "status": result["status"],
+        },
+    )
     return {"run_id": run_id, **result}

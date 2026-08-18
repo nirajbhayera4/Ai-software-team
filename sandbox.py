@@ -4,11 +4,15 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
+
+from logging_config import get_logger
 
 
 CODE_BLOCK_PATTERN = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 FILE_MARKER_PATTERN = re.compile(r"^=+\s*\n(.+?\.py)\s*\n=+\s*$", re.MULTILINE)
+logger = get_logger(__name__)
 
 
 def extract_python_code(generated_code):
@@ -139,8 +143,18 @@ def _docker_command(workspace, files, has_requirements, has_tests):
 
 
 def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_code=None):
+    started = time.perf_counter()
     enabled = os.getenv("SANDBOX_ENABLED", "false").strip().lower() == "true"
     if not enabled:
+        logger.info(
+            "sandbox skipped",
+            extra={
+                "event": "sandbox_skipped",
+                "agent": "execution_sandbox",
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "status": "skipped",
+            },
+        )
         return {
             "status": "skipped",
             "summary": "Execution sandbox is disabled. Set SANDBOX_ENABLED=true to run generated code in a container.",
@@ -149,6 +163,15 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
 
     code = extract_python_code(generated_code)
     if not code:
+        logger.info(
+            "sandbox skipped no code",
+            extra={
+                "event": "sandbox_skipped_no_code",
+                "agent": "execution_sandbox",
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "status": "skipped",
+            },
+        )
         return {
             "status": "skipped",
             "summary": "No generated Python code was available to check.",
@@ -156,6 +179,16 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
         }
 
     if not _docker_available():
+        logger.error(
+            "sandbox docker unavailable",
+            extra={
+                "event": "sandbox_docker_unavailable",
+                "agent": "execution_sandbox",
+                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "status": "failed",
+                "error": "Docker is unavailable.",
+            },
+        )
         return {
             "status": "failed",
             "summary": "Docker is unavailable, so generated code was not executed on the application server.",
@@ -192,6 +225,16 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
             )
         except subprocess.TimeoutExpired as error:
             logs = "\n".join(part for part in [error.stdout, error.stderr] if part)
+            logger.error(
+                "sandbox timed out",
+                extra={
+                    "event": "sandbox_timeout",
+                    "agent": "execution_sandbox",
+                    "duration_ms": int((time.perf_counter() - started) * 1000),
+                    "status": "failed",
+                    "error": f"Timed out after {timeout_seconds} seconds.",
+                },
+            )
             return {
                 "status": "failed",
                 "summary": f"Sandbox timed out after {timeout_seconds} seconds and was destroyed.",
@@ -210,6 +253,15 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
     else:
         summary = "Generated Python code failed inside the isolated Docker sandbox."
 
+    logger.info(
+        "sandbox execution completed",
+        extra={
+            "event": "sandbox_execution_completed",
+            "agent": "execution_sandbox",
+            "duration_ms": int((time.perf_counter() - started) * 1000),
+            "status": status,
+        },
+    )
     return {
         "status": status,
         "summary": summary,

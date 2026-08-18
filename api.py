@@ -241,7 +241,19 @@ def create_new_project(request: ProjectRequest, user=Depends(current_user)):
 
     project_id = create_project(user["id"], name, requirement)
     if requirement:
-        create_task(project_id, "Initial requirement", requirement)
+        task_id = create_task(project_id, "Initial requirement", requirement)
+    else:
+        task_id = None
+    logger.info(
+        "project created",
+        extra={
+            "event": "project_created",
+            "project_id": project_id,
+            "task_id": task_id,
+            "user_id": user["id"],
+            "status": "completed",
+        },
+    )
 
     project = get_project(project_id, user["id"])
     return {"project": project}
@@ -269,6 +281,16 @@ def create_project_task(project_id: int, request: TaskRequest, user=Depends(curr
         raise HTTPException(status_code=400, detail="Task requirement must not be empty.")
 
     task_id = create_task(project_id, title, requirement, request.priority.strip() or "normal")
+    logger.info(
+        "task created",
+        extra={
+            "event": "task_created",
+            "project_id": project_id,
+            "task_id": task_id,
+            "user_id": user["id"],
+            "status": "completed",
+        },
+    )
     return {"task": get_task(task_id)}
 
 
@@ -357,6 +379,15 @@ def create_benchmark(request: BenchmarkRunRequest, user=Depends(current_user)):
         raise HTTPException(status_code=400, detail=f"Benchmark limit must be {len(BENCHMARK_TASKS)} or fewer.")
 
     benchmark_run = run_benchmark(user["id"], limit=limit)
+    logger.info(
+        "benchmark completed",
+        extra={
+            "event": "benchmark_completed",
+            "benchmark_run_id": benchmark_run["id"],
+            "user_id": user["id"],
+            "status": benchmark_run["status"],
+        },
+    )
     return {
         "benchmark": benchmark_run,
         "summary": benchmark_summary(benchmark_run),

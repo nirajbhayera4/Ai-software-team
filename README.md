@@ -190,6 +190,7 @@ Authentication configuration:
 JWT_SECRET=replace-with-a-long-random-secret
 APP_ADMIN_USERNAME=admin
 APP_ADMIN_PASSWORD=replace-with-a-local-dev-password
+LOG_LEVEL=INFO
 ```
 
 The default admin credentials are for local development only. Set a strong
@@ -300,6 +301,30 @@ LLM failures are retried with exponential backoff. Timeouts, rate limits, API
 unavailability, malformed model output, agent exceptions, sandbox failures, test
 failures, and reviewer rejection are all captured as structured errors instead
 of crashing the entire workflow.
+
+## Structured Logging
+
+Backend logs are emitted as JSON so request and agent workflows can be traced in
+production log tools. Each API request gets an `x-request-id` response header;
+if the client sends `x-request-id`, the backend preserves it.
+
+Common log fields include:
+
+- `timestamp`
+- `request_id`
+- `project_id`
+- `task_id`
+- `agent`
+- `event`
+- `duration_ms`
+- `status`
+- `method`
+- `path`
+- `status_code`
+- `error`
+
+This makes it possible to follow one request through the API, task workflow,
+manager, developer, reviewer, tester, and execution sandbox.
 
 ## Evaluation
 
