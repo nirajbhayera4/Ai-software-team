@@ -1,0 +1,57 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  python-lint:
+    name: Python lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install lint tools
+        run: python -m pip install --upgrade pip ruff
+
+      - name: Ruff check
+        run: ruff check . --select E9,F63,F7,F82
+
+      - name: Python syntax check
+        run: python -m compileall -q api.py db.py evaluation.py orchestrator.py agents sandbox.py
+
+  frontend-lint:
+    name: Frontend dependency check
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ui/frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Validate frontend build graph
+        run: npm run build

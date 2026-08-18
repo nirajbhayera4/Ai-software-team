@@ -319,6 +319,19 @@ Per-task benchmark rows link back to the created project/task when available, so
 you can inspect the exact agent timeline, LLM calls, sandbox result, reviewer
 output, and workflow errors behind each score.
 
+## CI/CD
+
+GitHub Actions workflows live in `.github/workflows`:
+
+- `lint.yml`: runs Python lint/syntax checks and validates the frontend build graph.
+- `test.yml`: runs unit checks, FastAPI integration checks, frontend build, Bandit, `pip-audit`, and `npm audit`.
+- `deploy.yml`: runs after the `Test` workflow succeeds on `main`/`master`, or manually through `workflow_dispatch`.
+
+The deploy workflow is disabled by default so a fresh repository does not fail
+without production infrastructure. To enable deployment, set repository variable
+`DEPLOY_ENABLED=true` and repository secret `DEPLOY_COMMAND` to the command your
+deployment target requires.
+
 ## GitHub and push protection
 
 If GitHub rejects a push because it detected a secret in history, remove the

@@ -1,0 +1,228 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+env:
+  LLM_PROVIDER: openai
+  LLM_MODEL: test-model
+  LLM_API_KEY: test-key
+  LLM_MAX_RETRIES: "0"
+  SANDBOX_ENABLED: "false"
+  APP_SECRET_KEY: ci-secret
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Python syntax check
+        run: python -m compileall -q api.py db.py evaluation.py orchestrator.py agents sandbox.py
+
+      - name: Evaluation metrics unit check
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          import os
+
+          with TemporaryDirectory() as tmp:
+              os.environ["DATABASE_URL"] = "sqlite:///" + str(Path(tmp) / "evaluation.db")
+
+              import db
+              import evaluation
+
+              def fake_workflow(project):
+                  task_id = db.create_task(project["id"], "Fake task", project["requirement"])
+                  agent_run_id = db.create_agent_run(task_id, "developer", {"state": "start"})
+                  db.update_agent_run(agent_run_id, "completed", {"code": "print('ok')"})
+                  db.save_review(task_id, agent_run_id, {"overall_rating": 9, "approved": True})
+                  db.save_test_run(task_id, agent_run_id, "passed", {"tests": ["ok"]})
+                  db.save_llm_call(
+                      "developer",
+                      "fake-model",
+                      100,
+                      50,
+                      1200,
+                      0.004,
+                      "completed",
+                      task_id=task_id,
+                      agent_run_id=agent_run_id,
+                  )
+                  return {
+                      "task_id": task_id,
+                      "status": "completed",
+                      "review": {"approved": True},
+                      "sandbox": {"status": "passed"},
+                      "workflow_errors": [],
+                  }
+
+              db.initialize_database()
+              user_id = db.create_user("eval", "hash")
+              benchmark = evaluation.run_benchmark(user_id, limit=2, workflow_runner=fake_workflow)
+              assert benchmark["completed_tasks"] == 2, benchmark
+              assert benchmark["tests_passing_rate"] == 1.0, benchmark
+              assert benchmark["reviewer_approval_rate"] == 1.0, benchmark
+              assert evaluation.benchmark_summary(benchmark)["tasks_completed"] == "2/2"
+              db.engine.dispose()
+          PY
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: API auth and benchmark integration check
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          import os
+
+          with TemporaryDirectory() as tmp:
+              os.environ["DATABASE_URL"] = "sqlite:///" + str(Path(tmp) / "api.db")
+
+              import db
+              import api
+              from fastapi.testclient import TestClient
+
+              def fake_benchmark(owner_id, limit=None):
+                  benchmark_id = db.create_benchmark_run(owner_id, limit or 1)
+                  db.save_benchmark_result(
+                      benchmark_id,
+                      name="Fake",
+                      requirement="Fake requirement",
+                      status="completed",
+                      correctness_score=1.0,
+                      tests_passed=True,
+                      reviewer_approved=True,
+                      iterations=1,
+                      latency_ms=1000,
+                      cost_usd=0.01,
+                  )
+                  return db.complete_benchmark_run(benchmark_id)
+
+              original = api.run_benchmark
+              api.run_benchmark = fake_benchmark
+              try:
+                  with TestClient(api.app) as client:
+                      alice = client.post(
+                          "/auth/register",
+                          json={"username": "alice", "password": "password1"},
+                      )
+                      assert alice.status_code == 201, alice.text
+                      alice_headers = {"Authorization": f"Bearer {alice.json()['access_token']}"}
+
+                      project = client.post(
+                          "/projects",
+                          headers=alice_headers,
+                          json={"name": "Alice Project", "requirement": "private"},
+                      )
+                      assert project.status_code == 200, project.text
+                      project_id = project.json()["project"]["id"]
+
+                      brenda = client.post(
+                          "/auth/register",
+                          json={"username": "brenda", "password": "password1"},
+                      )
+                      assert brenda.status_code == 201, brenda.text
+                      brenda_headers = {"Authorization": f"Bearer {brenda.json()['access_token']}"}
+                      assert client.get("/projects", headers=brenda_headers).json()["projects"] == []
+                      blocked = client.get(f"/projects/{project_id}/tasks", headers=brenda_headers)
+                      assert blocked.status_code == 404, blocked.text
+
+                      created = client.post("/benchmarks/runs", headers=alice_headers, json={"limit": 1})
+                      assert created.status_code == 200, created.text
+                      assert created.json()["summary"]["tasks_completed"] == "1/1", created.text
+              finally:
+                  api.run_benchmark = original
+                  db.engine.dispose()
+          PY
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: integration-tests
+
+    defaults:
+      run:
+        working-directory: ui/frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install security tools
+        run: python -m pip install --upgrade pip bandit pip-audit
+
+      - name: Bandit static analysis
+        run: bandit -r . -x ./venv,./ui/frontend/node_modules
+
+      - name: Python dependency audit
+        run: pip-audit -r requirements.txt
+
+      - name: Node dependency audit
+        working-directory: ui/frontend
+        run: npm audit --audit-level=high

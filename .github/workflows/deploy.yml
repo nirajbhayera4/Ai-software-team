@@ -1,0 +1,74 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - Test
+    types:
+      - completed
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy application
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success') &&
+      vars.DEPLOY_ENABLED == 'true'
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build frontend
+        working-directory: ui/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy command
+        env:
+          DEPLOY_COMMAND: ${{ secrets.DEPLOY_COMMAND }}
+        run: |
+          if [ -z "$DEPLOY_COMMAND" ]; then
+            echo "DEPLOY_ENABLED=true but DEPLOY_COMMAND is not configured."
+            exit 1
+          fi
+          bash -lc "$DEPLOY_COMMAND"
+
+  deploy-disabled:
+    name: Deployment disabled
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success') &&
+      vars.DEPLOY_ENABLED != 'true'
+
+    steps:
+      - name: Explain deployment gate
+        run: |
+          echo "Deployment is intentionally disabled."
+          echo "Set repository variable DEPLOY_ENABLED=true and secret DEPLOY_COMMAND to enable production deploys."
