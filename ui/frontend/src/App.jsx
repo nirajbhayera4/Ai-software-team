@@ -31,6 +31,7 @@ function App() {
   const [benchmarks, setBenchmarks] = useState([])
   const [activeBenchmark, setActiveBenchmark] = useState(null)
   const [benchmarkLimit, setBenchmarkLimit] = useState('3')
+  const [activeView, setActiveView] = useState('dashboard')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
@@ -236,8 +237,26 @@ function App() {
     setActiveTask(null)
     setBenchmarks([])
     setActiveBenchmark(null)
+    setActiveView('dashboard')
     setStatus('')
   }
+
+  const finalOutput = activeRun?.final_output || {}
+  const implementation = finalOutput.implementation || {}
+  const review = finalOutput.review || {}
+  const testPlan = finalOutput.test_plan || {}
+  const sandbox = finalOutput.sandbox || {}
+  const workflowErrors = finalOutput.workflow_errors || []
+  const filesChanged = implementation.files_changed || activeTask?.file_changes || []
+  const agentRuns = activeTask?.agent_runs || []
+  const latestRunStatus = activeRun?.status || selectedProject?.latest_task_status || selectedProject?.status || 'idle'
+  const navItems = [
+    ['dashboard', 'Dashboard'],
+    ['agents', 'Agents'],
+    ['runs', 'Runs'],
+    ['evaluations', 'Evaluations'],
+    ['settings', 'Settings'],
+  ]
 
   if (!token) {
     return (
@@ -298,117 +317,137 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Architecture dashboard</p>
-          <h1>AI Software Team</h1>
+    <div className="product-shell">
+      <aside className="app-nav">
+        <div className="brand-block">
+          <p className="eyebrow">AI Software Team</p>
+          <strong>Workspace</strong>
         </div>
-        <div className="user-area">
+
+        <nav className="nav-list" aria-label="Main navigation">
+          {navItems.map(([id, label]) => (
+            <button
+              className={activeView === id ? 'nav-item active' : 'nav-item'}
+              key={id}
+              type="button"
+              onClick={() => setActiveView(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <section className="nav-section">
+          <div className="nav-heading">
+            <span>Projects</span>
+            <strong>{projects.length}</strong>
+          </div>
+          <div className="project-list compact">
+            {projects.map((project) => (
+              <button
+                className={project.id === selectedProjectId ? 'project-item active' : 'project-item'}
+                key={project.id}
+                type="button"
+                onClick={() => {
+                  setSelectedProjectId(project.id)
+                  setActiveView('dashboard')
+                }}
+              >
+                <strong>{project.name}</strong>
+                <span>{project.latest_task_status || project.status}</span>
+              </button>
+            ))}
+            {projects.length === 0 && <p className="muted">No projects yet.</p>}
+          </div>
+        </section>
+
+        <div className="nav-footer">
           <span>{user?.username}</span>
           <button className="secondary" type="button" onClick={logout}>Logout</button>
         </div>
-      </header>
+      </aside>
 
-      <main className="dashboard">
-        <aside className="sidebar">
-          <section className="panel">
-            <h2>New project</h2>
-            <form onSubmit={handleCreateProject} className="stack">
-              <label htmlFor="project-name">Name</label>
-              <input
-                id="project-name"
-                value={projectForm.name}
-                onChange={(event) => setProjectForm({ ...projectForm, name: event.target.value })}
-                placeholder="Inventory API"
-              />
-              <label htmlFor="requirement">Requirement</label>
-              <textarea
-                id="requirement"
-                value={projectForm.requirement}
-                onChange={(event) => setProjectForm({ ...projectForm, requirement: event.target.value })}
-                placeholder="Build a REST API with auth, products, orders, tests, and documentation."
-              />
-              <button type="submit">Create project</button>
-            </form>
-          </section>
-
-          <section className="panel">
-            <h2>Projects</h2>
-            <div className="project-list">
-              {projects.map((project) => (
-                <button
-                  className={project.id === selectedProjectId ? 'project-item active' : 'project-item'}
-                  key={project.id}
-                  type="button"
-                  onClick={() => setSelectedProjectId(project.id)}
-                >
-                  <strong>{project.name}</strong>
-                  <span>{project.latest_run_status || project.status}</span>
-                </button>
-              ))}
-              {projects.length === 0 && <p className="muted">No projects yet.</p>}
-            </div>
-          </section>
-
-          <section className="panel">
-            <h2>Benchmarks</h2>
-            <form onSubmit={handleRunBenchmark} className="benchmark-form">
-              <label htmlFor="benchmark-limit">Tasks</label>
-              <input
-                id="benchmark-limit"
-                min="1"
-                max="20"
-                type="number"
-                value={benchmarkLimit}
-                onChange={(event) => setBenchmarkLimit(event.target.value)}
-              />
-              <button type="submit">Run</button>
-            </form>
-            <div className="run-list">
-              {benchmarks.map((benchmark) => (
-                <button
-                  className={activeBenchmark?.id === benchmark.id ? 'run-item active' : 'run-item'}
-                  key={benchmark.id}
-                  type="button"
-                  onClick={() => loadBenchmark(benchmark.id).catch((err) => setError(err.message))}
-                >
-                  <span>Benchmark #{benchmark.id}</span>
-                  <strong>{benchmark.completed_tasks}/{benchmark.total_tasks}</strong>
-                </button>
-              ))}
-              {benchmarks.length === 0 && <p className="muted">No benchmarks yet.</p>}
-            </div>
-          </section>
-        </aside>
-
-        <section className="workspace">
-          <section className="panel project-header">
-            <div>
-              <h2>{selectedProject?.name || 'Select a project'}</h2>
-              <p className="muted">{selectedProject?.requirement || 'Create a project to start the agent workflow.'}</p>
-            </div>
+      <main className="main-stage">
+        <header className="workspace-header">
+          <div>
+            <p className="eyebrow">{activeView}</p>
+            <h1>{selectedProject?.name || 'Create your first project'}</h1>
+            <p className="muted">{selectedProject?.requirement || 'Start with a requirement, then run the AI team workflow.'}</p>
+          </div>
+          <div className="header-actions">
+            <span className={`status-pill ${latestRunStatus}`}>{latestRunStatus}</span>
             <button type="button" disabled={!selectedProject} onClick={handleRunProject}>
               Run agents
             </button>
+          </div>
+        </header>
+
+        {(status || error) && (
+          <div className={error ? 'message error' : 'message'}>
+            {error || status}
+          </div>
+        )}
+
+        {activeView === 'dashboard' && (
+          <section className="dashboard-view">
+            <section className="panel task-brief">
+              <div>
+                <p className="eyebrow">Task</p>
+                <h2>{activeTask?.title || 'Initial requirement'}</h2>
+                <p className="muted">{activeTask?.requirement || selectedProject?.requirement || 'No task selected.'}</p>
+              </div>
+              <div className="summary-strip">
+                <SummaryStat label="Agents" value={agentRuns.length} />
+                <SummaryStat label="Duration" value={formatDuration(activeTask?.total_duration_ms)} />
+                <SummaryStat label="Files" value={filesChanged.length} />
+                <SummaryStat label="Errors" value={workflowErrors.length} />
+              </div>
+            </section>
+
+            <section className="primary-grid">
+              <AgentTimeline task={activeTask} />
+              <section className="panel">
+                <div className="section-heading">
+                  <h2>Runs</h2>
+                  <span>{runs.length}</span>
+                </div>
+                <div className="run-list">
+                  {runs.map((run) => (
+                    <button
+                      className={activeRun?.id === run.id ? 'run-item active' : 'run-item'}
+                      key={run.id}
+                      type="button"
+                      onClick={() => loadRun(run.id).catch((err) => setError(err.message))}
+                    >
+                      <span>Run #{run.id}</span>
+                      <strong>{run.status}</strong>
+                    </button>
+                  ))}
+                  {runs.length === 0 && <p className="muted">No runs yet.</p>}
+                </div>
+              </section>
+            </section>
+
+            <section className="detail-grid">
+              <FilesChanged files={filesChanged} />
+              <TestsPanel testPlan={testPlan} sandbox={sandbox} />
+              <ReviewPanel review={review} />
+            </section>
           </section>
+        )}
 
-          <section className="flow">
-            {['Web UI', 'API Server', 'Agent Orchestrator', 'Execution Sandbox', 'Database'].map((step) => (
-              <div className="flow-step" key={step}>{step}</div>
-            ))}
+        {activeView === 'agents' && (
+          <section className="stacked-view">
+            <AgentTimeline task={activeTask} expanded />
+            <Observability task={activeTask} />
           </section>
+        )}
 
-          {(status || error) && (
-            <div className={error ? 'message error' : 'message'}>
-              {error || status}
-            </div>
-          )}
-
-          <section className="content-grid">
-            <div className="panel">
-              <h2>Runs</h2>
-              <div className="run-list">
+        {activeView === 'runs' && (
+          <section className="runs-view">
+            <section className="panel">
+              <h2>Run history</h2>
+              <div className="run-list wide">
                 {runs.map((run) => (
                   <button
                     className={activeRun?.id === run.id ? 'run-item active' : 'run-item'}
@@ -422,24 +461,70 @@ function App() {
                 ))}
                 {runs.length === 0 && <p className="muted">No runs yet.</p>}
               </div>
-            </div>
-
-            <div className="outputs">
-              <BenchmarkSummary benchmark={activeBenchmark} />
-              <Observability task={activeTask} />
-              <Output title="Manager Tasks" value={activeRun?.final_output?.tasks} />
-              <Output title="Developer Output" value={activeRun?.final_output?.implementation} code />
-              <Output title="Reviewer Notes" value={activeRun?.final_output?.review} />
-              <Output title="Tester Plan" value={activeRun?.final_output?.test_plan} />
-              <Output
-                title="Sandbox"
-                value={activeRun?.final_output?.sandbox
-                  ? `${activeRun.final_output.sandbox.status}\n${activeRun.final_output.sandbox.summary}\n${activeRun.final_output.sandbox.logs || ''}`
-                  : ''}
-              />
-            </div>
+            </section>
+            <Output title="Manager Tasks" value={finalOutput.tasks} />
+            <Output title="Developer Output" value={implementation} code />
+            <Output title="Sandbox" value={sandbox} />
           </section>
-        </section>
+        )}
+
+        {activeView === 'evaluations' && (
+          <section className="stacked-view">
+            <section className="panel evaluation-runner">
+              <div>
+                <h2>Benchmark runner</h2>
+                <p className="muted">Run a sample or full benchmark against the current AI workflow.</p>
+              </div>
+              <form onSubmit={handleRunBenchmark} className="benchmark-form horizontal">
+                <label htmlFor="benchmark-limit-main">Tasks</label>
+                <input
+                  id="benchmark-limit-main"
+                  min="1"
+                  max="20"
+                  type="number"
+                  value={benchmarkLimit}
+                  onChange={(event) => setBenchmarkLimit(event.target.value)}
+                />
+                <button type="submit">Run benchmark</button>
+              </form>
+            </section>
+            <BenchmarkSummary benchmark={activeBenchmark} />
+          </section>
+        )}
+
+        {activeView === 'settings' && (
+          <section className="settings-grid">
+            <section className="panel">
+              <h2>New project</h2>
+              <form onSubmit={handleCreateProject} className="stack">
+                <label htmlFor="project-name">Name</label>
+                <input
+                  id="project-name"
+                  value={projectForm.name}
+                  onChange={(event) => setProjectForm({ ...projectForm, name: event.target.value })}
+                  placeholder="E-Commerce"
+                />
+                <label htmlFor="requirement">Requirement</label>
+                <textarea
+                  id="requirement"
+                  value={projectForm.requirement}
+                  onChange={(event) => setProjectForm({ ...projectForm, requirement: event.target.value })}
+                  placeholder="Build authentication, product catalog, cart, checkout, tests, and deployment notes."
+                />
+                <button type="submit">Create project</button>
+              </form>
+            </section>
+            <section className="panel">
+              <h2>Environment</h2>
+              <dl className="settings-list">
+                <div><dt>API</dt><dd>{API_URL}</dd></div>
+                <div><dt>Session</dt><dd>{user?.username}</dd></div>
+                <div><dt>Projects</dt><dd>{projects.length}</dd></div>
+                <div><dt>Benchmarks</dt><dd>{benchmarks.length}</dd></div>
+              </dl>
+            </section>
+          </section>
+        )}
       </main>
     </div>
   )
@@ -463,6 +548,105 @@ function statusMark(status) {
 
 function formatPercent(value) {
   return `${(Number(value || 0) * 100).toFixed(1)}%`
+}
+
+function SummaryStat({ label, value }) {
+  return (
+    <div className="summary-stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
+}
+
+function AgentTimeline({ task, expanded = false }) {
+  const agentRuns = task?.agent_runs || []
+  const expectedAgents = ['manager', 'developer', 'tester', 'reviewer', 'execution_sandbox']
+  const displayedRuns = agentRuns.length > 0
+    ? agentRuns
+    : expectedAgents.map((agent) => ({ id: agent, agent_name: agent, status: 'idle', duration_ms: 0 }))
+
+  return (
+    <section className={expanded ? 'panel agent-timeline expanded' : 'panel agent-timeline'}>
+      <div className="section-heading">
+        <h2>Agent execution timeline</h2>
+        <span>Total: {formatDuration(task?.total_duration_ms)}</span>
+      </div>
+      <div className="agent-steps">
+        {displayedRuns.map((run) => (
+          <div className="agent-step" key={run.id}>
+            <div>
+              <strong>{run.agent_name}</strong>
+              <span>{run.status}</span>
+            </div>
+            <b className={run.status === 'failed' ? 'failed' : run.status === 'idle' ? 'idle' : 'passed'}>
+              {statusMark(run.status)}
+            </b>
+            <small>{formatDuration(run.duration_ms)}</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function FilesChanged({ files }) {
+  return (
+    <section className="panel detail-panel">
+      <div className="section-heading">
+        <h2>Files changed</h2>
+        <span>{files.length}</span>
+      </div>
+      <div className="file-list">
+        {files.map((file, index) => (
+          <div className="file-row" key={`${file.path || file}-${index}`}>
+            <strong>{file.path || file}</strong>
+            <span>{file.change_summary || file.summary || file.purpose || 'Generated change'}</span>
+          </div>
+        ))}
+        {files.length === 0 && <p className="muted">No file changes recorded.</p>}
+      </div>
+    </section>
+  )
+}
+
+function TestsPanel({ testPlan, sandbox }) {
+  return (
+    <section className="panel detail-panel">
+      <div className="section-heading">
+        <h2>Tests</h2>
+        <span>{sandbox?.status || 'idle'}</span>
+      </div>
+      <pre>{testPlan && Object.keys(testPlan).length ? JSON.stringify(testPlan, null, 2) : 'No test plan yet.'}</pre>
+      {sandbox?.summary && <p className="muted">{sandbox.summary}</p>}
+    </section>
+  )
+}
+
+function ReviewPanel({ review }) {
+  const issues = review?.issues || []
+
+  return (
+    <section className="panel detail-panel">
+      <div className="section-heading">
+        <h2>Review</h2>
+        <span>{review?.approved ? 'approved' : 'pending'}</span>
+      </div>
+      <div className="review-score">
+        <strong>{review?.overall_rating ?? '-'}</strong>
+        <span>overall rating</span>
+      </div>
+      <div className="file-list">
+        {issues.map((issue, index) => (
+          <div className="file-row" key={`${issue.description || 'issue'}-${index}`}>
+            <strong>{issue.severity || 'issue'}</strong>
+            <span>{issue.description || issue.suggestion || 'Review issue recorded.'}</span>
+          </div>
+        ))}
+        {issues.length === 0 && <p className="muted">No review issues recorded.</p>}
+      </div>
+    </section>
+  )
 }
 
 function BenchmarkSummary({ benchmark }) {
