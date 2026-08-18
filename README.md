@@ -1,8 +1,9 @@
 # AI Software Team
 
-AI Software Team is a starter workspace for experimenting with a multi-agent
-software-development workflow. The project is organized around agent roles,
-shared tools, prompts, a workflow graph, and a small UI entry point.
+AI Software Team is a full-stack multi-agent software-development dashboard. It
+lets authenticated users create private projects, run a manager/developer/reviewer/tester
+workflow, inspect generated outputs, and review execution/LLM observability for
+each task.
 
 ## Current Architecture
 
@@ -23,14 +24,19 @@ Containerized generated-code checks
         |
         v
 SQLAlchemy Database
-Users / Projects / Tasks / Agent outputs
+Users / Projects / Tasks / Agent runs / LLM calls
 ```
 
-The React dashboard stores an auth token locally after login, creates projects,
-starts agent runs, and displays saved outputs. The API persists users, projects,
-runs, tasks, agent messages, file changes, test runs, reviews, LLM calls, and
-agent outputs through SQLAlchemy models. Local development defaults to SQLite at
-`data/ai_software_team.db`; production should set `DATABASE_URL` to PostgreSQL.
+The React dashboard supports register, login, logout, session restore, project
+creation, run execution, output inspection, and observability views. The API
+requires bearer-token authentication for project/task/run data and always checks
+project ownership on the backend before returning or mutating project-scoped
+resources.
+
+The API persists users, projects, runs, tasks, agent messages, file changes, test
+runs, reviews, LLM calls, and agent outputs through SQLAlchemy models. Local
+development defaults to SQLite at `data/ai_software_team.db`; production should
+set `DATABASE_URL` to PostgreSQL.
 
 Agent outputs are structured JSON objects instead of plain text blobs. The
 manager returns task objects, the developer returns changed files/code/test
@@ -59,7 +65,7 @@ agents/      Role-specific agent implementations
 graph/       Workflow orchestration
 prompts/     Prompt templates used by agents
 tools/       Shared integrations and helper functions
-ui/          User interface entry point
+ui/          Streamlit entry point and React frontend
 db.py        SQLAlchemy persistence layer
 api.py       Auth, project, run, and generation API
 orchestrator.py Agent workflow manager
@@ -67,12 +73,23 @@ sandbox.py   Containerized execution sandbox checks
 main.py      Application entry point
 ```
 
-## Planned Agent Roles
+## Core Features
+
+- Authentication: register, login, logout, bearer-token sessions, and `/auth/session`.
+- User-owned projects: users only see their own projects, and project/task/run IDs are rechecked on the backend.
+- SQLAlchemy persistence: production-ready ORM layer with PostgreSQL support via `DATABASE_URL`.
+- Multi-agent workflow: manager, developer, reviewer, tester, and execution sandbox.
+- Container sandbox: generated Python code runs only in a short-lived Docker container when sandboxing is enabled.
+- Observability: agent timeline, durations, total task time, LLM tokens, latency, estimated cost, status, and errors.
+- Failure handling: LLM retries, timeout handling, malformed-output fallback, agent fallback outputs, sandbox/test failure, and reviewer rejection.
+
+## Agent Roles
 
 - `manager`: breaks work into tasks and coordinates the workflow
-- `developer`: implements requested changes
+- `developer`: generates implementation output, optional dependencies, and optional executable tests
 - `reviewer`: reviews code for correctness and maintainability
 - `tester`: validates behavior and reports failures
+- `execution_sandbox`: compiles/tests generated code in an isolated container
 
 ## Getting Started
 
@@ -121,6 +138,8 @@ LLM_RETRY_BASE_DELAY_SECONDS=1
 
 Set the token cost values for your selected model/provider to enable estimated
 LLM cost tracking. They default to `0` so pricing is not silently hard-coded.
+Retries default to two attempts after the first failure. Each failed attempt is
+stored in the `llm_calls` table and shown in the dashboard.
 
 Example for OpenAI-compatible APIs:
 
@@ -164,18 +183,26 @@ SANDBOX_PIDS_LIMIT=128
 SANDBOX_ALLOW_NETWORK=false
 ```
 
-## Run
+Authentication configuration:
 
-```bash
-python main.py
+```env
+APP_SECRET_KEY=replace-with-a-long-random-secret
+APP_ADMIN_USERNAME=admin
+APP_ADMIN_PASSWORD=password
 ```
 
-## React Frontend
+The default admin credentials are for local development only. Set a strong
+`APP_SECRET_KEY` and admin password outside local demos.
 
-A separate animated frontend is available at `ui/frontend`.
+## Run
 
-> Note: the frontend UI is currently under active development, including the landing page,
-> login flow, and backend integration.
+Run the FastAPI backend:
+
+```bash
+uvicorn api:app --reload --port 8000
+```
+
+Run the React frontend:
 
 ```bash
 cd ui/frontend
@@ -183,10 +210,13 @@ npm install
 npm run dev
 ```
 
-The frontend calls the backend API at `http://localhost:8000`. Run the API with:
+The frontend calls the backend API at `http://localhost:8000` and runs at
+`http://localhost:5173` by default.
+
+You can also run the legacy entry point:
 
 ```bash
-uvicorn api:app --reload --port 8000
+python main.py
 ```
 
 Default development login:
@@ -195,6 +225,66 @@ Default development login:
 username: admin
 password: password
 ```
+
+## API Overview
+
+- `POST /auth/register`: create a user and return a bearer token.
+- `POST /auth/login`: authenticate and return a bearer token.
+- `GET /auth/session`: return the current authenticated user.
+- `GET /projects`: list only the current user's projects.
+- `POST /projects`: create a project owned by the current user.
+- `GET /projects/{project_id}/tasks`: list tasks after ownership verification.
+- `POST /projects/{project_id}/tasks`: create a project task after ownership verification.
+- `GET /tasks/{task_id}`: return task workspace, agent runs, agent messages, outputs, and observability.
+- `POST /tasks/{task_id}/runs`: run the workflow for a task after ownership verification.
+- `POST /projects/{project_id}/runs`: run the full workflow for a project after ownership verification.
+- `GET /projects/{project_id}/runs`: list project runs after ownership verification.
+- `GET /runs/{run_id}`: return run outputs after ownership verification.
+
+## Database Tables
+
+- `users`
+- `projects`
+- `tasks`
+- `agent_runs`
+- `agent_messages`
+- `llm_calls`
+- `file_changes`
+- `test_runs`
+- `reviews`
+- `runs`
+- `agents`
+- `agent_outputs`
+
+## Sandbox Behavior
+
+When `SANDBOX_ENABLED=false`, generated-code execution is skipped. When
+`SANDBOX_ENABLED=true`, generated code is copied into a temporary workspace and
+executed inside Docker with:
+
+- no network by default
+- CPU, memory, PID, and timeout limits
+- read-only container filesystem
+- dropped Linux capabilities
+- `no-new-privileges`
+- disposable workspace cleanup after execution
+
+If Docker is unavailable while sandboxing is enabled, the app refuses to execute
+generated code on the API server and records a failed sandbox result.
+
+## Observability And Failure Handling
+
+Each task workspace includes:
+
+- `agent_runs`: ordered timeline with agent name, status, start/end time, and duration
+- `llm_calls`: model, input tokens, output tokens, latency, estimated cost, status, and error
+- `total_duration_ms`: total recorded agent-run duration
+- `workflow_errors`: structured fallback, retry, reviewer rejection, sandbox, or test failure information
+
+LLM failures are retried with exponential backoff. Timeouts, rate limits, API
+unavailability, malformed model output, agent exceptions, sandbox failures, test
+failures, and reviewer rejection are all captured as structured errors instead
+of crashing the entire workflow.
 
 ## GitHub and push protection
 
@@ -208,14 +298,9 @@ secret from all commits before pushing again.
 
 ## Status
 
-This repository is currently under active development. The package layout and
-frontend scaffold are in place, but the agent implementations, workflow logic,
-backend API integration, tools, and UI are still being built and refined.
-
-## Next Steps
-
-- Define the workflow in `graph/workflow.py`
-- Implement each agent in `agents/`
-- Add prompt templates in `prompts/`
-- Add file and GitHub helpers in `tools/`
-- Build the UI in `ui/app.py`
+The project now has the core production-facing pieces in place: authenticated
+user workspaces, ORM-backed persistence, containerized execution checks,
+observability, retry logic, and structured failure handling. It is still a
+portfolio/development system, so use real secrets, a managed PostgreSQL
+database, Docker sandbox capacity, and production deployment hardening before
+running it for untrusted users.
