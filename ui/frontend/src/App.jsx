@@ -28,6 +28,9 @@ function App() {
   const [runs, setRuns] = useState([])
   const [activeRun, setActiveRun] = useState(null)
   const [activeTask, setActiveTask] = useState(null)
+  const [benchmarks, setBenchmarks] = useState([])
+  const [activeBenchmark, setActiveBenchmark] = useState(null)
+  const [benchmarkLimit, setBenchmarkLimit] = useState('3')
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
@@ -97,8 +100,23 @@ function App() {
     setActiveTask(data.task)
   }
 
+  async function loadBenchmarks() {
+    if (!token) return
+    const data = await request('/benchmarks')
+    setBenchmarks(data.benchmarks)
+    if (data.benchmarks.length > 0 && !activeBenchmark) {
+      await loadBenchmark(data.benchmarks[0].id)
+    }
+  }
+
+  async function loadBenchmark(benchmarkId) {
+    const data = await request(`/benchmarks/runs/${benchmarkId}`)
+    setActiveBenchmark({ ...data.benchmark, summary: data.summary })
+  }
+
   useEffect(() => {
     loadProjects().catch((err) => setError(err.message))
+    loadBenchmarks().catch((err) => setError(err.message))
   }, [token])
 
   useEffect(() => {
@@ -185,6 +203,27 @@ function App() {
     }
   }
 
+  async function handleRunBenchmark(event) {
+    event.preventDefault()
+    setError('')
+    setStatus('Running benchmark...')
+
+    const parsedLimit = Number.parseInt(benchmarkLimit, 10)
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : null
+    try {
+      const data = await request('/benchmarks/runs', {
+        method: 'POST',
+        body: JSON.stringify({ limit }),
+      })
+      await loadBenchmarks()
+      await loadBenchmark(data.benchmark.id)
+      setStatus(`Benchmark ${data.summary.tasks_completed} completed.`)
+    } catch (err) {
+      setStatus('')
+      setError(err.message)
+    }
+  }
+
   function logout() {
     localStorage.removeItem('aiTeamToken')
     localStorage.removeItem('aiTeamUser')
@@ -195,6 +234,8 @@ function App() {
     setRuns([])
     setActiveRun(null)
     setActiveTask(null)
+    setBenchmarks([])
+    setActiveBenchmark(null)
     setStatus('')
   }
 
@@ -309,6 +350,36 @@ function App() {
               {projects.length === 0 && <p className="muted">No projects yet.</p>}
             </div>
           </section>
+
+          <section className="panel">
+            <h2>Benchmarks</h2>
+            <form onSubmit={handleRunBenchmark} className="benchmark-form">
+              <label htmlFor="benchmark-limit">Tasks</label>
+              <input
+                id="benchmark-limit"
+                min="1"
+                max="20"
+                type="number"
+                value={benchmarkLimit}
+                onChange={(event) => setBenchmarkLimit(event.target.value)}
+              />
+              <button type="submit">Run</button>
+            </form>
+            <div className="run-list">
+              {benchmarks.map((benchmark) => (
+                <button
+                  className={activeBenchmark?.id === benchmark.id ? 'run-item active' : 'run-item'}
+                  key={benchmark.id}
+                  type="button"
+                  onClick={() => loadBenchmark(benchmark.id).catch((err) => setError(err.message))}
+                >
+                  <span>Benchmark #{benchmark.id}</span>
+                  <strong>{benchmark.completed_tasks}/{benchmark.total_tasks}</strong>
+                </button>
+              ))}
+              {benchmarks.length === 0 && <p className="muted">No benchmarks yet.</p>}
+            </div>
+          </section>
         </aside>
 
         <section className="workspace">
@@ -354,6 +425,7 @@ function App() {
             </div>
 
             <div className="outputs">
+              <BenchmarkSummary benchmark={activeBenchmark} />
               <Observability task={activeTask} />
               <Output title="Manager Tasks" value={activeRun?.final_output?.tasks} />
               <Output title="Developer Output" value={activeRun?.final_output?.implementation} code />
@@ -384,9 +456,79 @@ function formatCost(value) {
 }
 
 function statusMark(status) {
-  if (status === 'completed' || status === 'passed') return '✓'
-  if (status === 'failed') return '✗'
-  return '•'
+  if (status === 'completed' || status === 'passed') return 'OK'
+  if (status === 'failed') return 'FAIL'
+  return '...'
+}
+
+function formatPercent(value) {
+  return `${(Number(value || 0) * 100).toFixed(1)}%`
+}
+
+function BenchmarkSummary({ benchmark }) {
+  if (!benchmark) {
+    return (
+      <section className="panel benchmark-summary">
+        <h2>Evaluation</h2>
+        <p className="muted">Run a benchmark to measure completion, tests, review approval, latency, and cost.</p>
+      </section>
+    )
+  }
+
+  const metrics = [
+    ['Tasks completed', `${benchmark.completed_tasks}/${benchmark.total_tasks}`],
+    ['Tests passing', formatPercent(benchmark.tests_passing_rate)],
+    ['Reviewer approval', formatPercent(benchmark.reviewer_approval_rate)],
+    ['Average iterations', Number(benchmark.average_iterations || 0).toFixed(2)],
+    ['Average latency', formatDuration(benchmark.average_latency_ms)],
+    ['Average LLM cost', formatCost(benchmark.average_cost_usd)],
+    ['Correctness score', Number(benchmark.average_correctness_score || 0).toFixed(3)],
+  ]
+
+  return (
+    <section className="panel benchmark-summary">
+      <div className="section-heading">
+        <h2>Evaluation #{benchmark.id}</h2>
+        <span>{benchmark.status}</span>
+      </div>
+      <div className="metric-grid">
+        {metrics.map(([label, value]) => (
+          <div className="metric" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Task</th>
+              <th>Status</th>
+              <th>Score</th>
+              <th>Tests</th>
+              <th>Review</th>
+              <th>Latency</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(benchmark.results || []).map((result) => (
+              <tr key={result.id}>
+                <td>{result.name}</td>
+                <td>{result.status}</td>
+                <td>{Number(result.correctness_score || 0).toFixed(3)}</td>
+                <td>{result.tests_passed ? 'passed' : 'failed'}</td>
+                <td>{result.reviewer_approved ? 'approved' : 'rejected'}</td>
+                <td>{formatDuration(result.latency_ms)}</td>
+                <td>{formatCost(result.cost_usd)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
 }
 
 function Observability({ task }) {

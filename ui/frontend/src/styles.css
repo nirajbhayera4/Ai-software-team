@@ -203,6 +203,17 @@ pre {
   margin-top: 0.75rem;
 }
 
+.benchmark-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.benchmark-form label {
+  grid-column: 1 / -1;
+}
+
 .project-item,
 .run-item {
   display: grid;
@@ -268,6 +279,37 @@ pre {
   gap: 1rem;
 }
 
+.benchmark-summary {
+  display: grid;
+  gap: 1rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.metric {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid #243044;
+  border-radius: 8px;
+  background: #0f172a;
+  padding: 0.75rem;
+}
+
+.metric span {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: #f9fafb;
+  font-size: 1rem;
+}
+
 .section-heading {
   display: flex;
   align-items: center;
@@ -288,7 +330,7 @@ pre {
 
 .timeline-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px 80px;
+  grid-template-columns: minmax(0, 1fr) 52px 80px;
   gap: 0.75rem;
   align-items: center;
   border: 1px solid #243044;
@@ -351,7 +393,8 @@ th {
   .dashboard,
   .content-grid,
   .project-header,
-  .flow {
+  .flow,
+  .metric-grid {
     grid-template-columns: 1fr;
   }
 

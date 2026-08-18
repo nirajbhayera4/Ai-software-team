@@ -81,6 +81,7 @@ main.py      Application entry point
 - Multi-agent workflow: manager, developer, reviewer, tester, and execution sandbox.
 - Container sandbox: generated Python code runs only in a short-lived Docker container when sandboxing is enabled.
 - Observability: agent timeline, durations, total task time, LLM tokens, latency, estimated cost, status, and errors.
+- Evaluation: 20 predefined coding benchmark tasks with completion, tests, review, iteration, latency, cost, and correctness metrics.
 - Failure handling: LLM retries, timeout handling, malformed-output fallback, agent fallback outputs, sandbox/test failure, and reviewer rejection.
 
 ## Agent Roles
@@ -226,6 +227,14 @@ username: admin
 password: password
 ```
 
+Run the coding benchmark from the CLI:
+
+```bash
+python evaluation.py --owner-id 1 --limit 3
+```
+
+Omit `--limit` to run all 20 predefined benchmark tasks.
+
 ## API Overview
 
 - `POST /auth/register`: create a user and return a bearer token.
@@ -240,6 +249,10 @@ password: password
 - `POST /projects/{project_id}/runs`: run the full workflow for a project after ownership verification.
 - `GET /projects/{project_id}/runs`: list project runs after ownership verification.
 - `GET /runs/{run_id}`: return run outputs after ownership verification.
+- `GET /benchmarks/tasks`: list predefined benchmark tasks.
+- `GET /benchmarks`: list benchmark runs owned by the current user.
+- `POST /benchmarks/runs`: run the benchmark for the current user.
+- `GET /benchmarks/runs/{benchmark_run_id}`: return aggregate and per-task benchmark results.
 
 ## Database Tables
 
@@ -255,6 +268,8 @@ password: password
 - `runs`
 - `agents`
 - `agent_outputs`
+- `benchmark_runs`
+- `benchmark_results`
 
 ## Sandbox Behavior
 
@@ -285,6 +300,24 @@ LLM failures are retried with exponential backoff. Timeouts, rate limits, API
 unavailability, malformed model output, agent exceptions, sandbox failures, test
 failures, and reviewer rejection are all captured as structured errors instead
 of crashing the entire workflow.
+
+## Evaluation
+
+The benchmark harness runs predefined coding tasks through the same production
+workflow and stores both per-task and aggregate measurements. Each benchmark run
+tracks:
+
+- tasks completed
+- tests passing rate
+- reviewer approval rate
+- average iterations
+- average latency
+- average LLM cost
+- average correctness score
+
+Per-task benchmark rows link back to the created project/task when available, so
+you can inspect the exact agent timeline, LLM calls, sandbox result, reviewer
+output, and workflow errors behind each score.
 
 ## GitHub and push protection
 

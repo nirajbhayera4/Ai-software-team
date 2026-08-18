@@ -13,6 +13,7 @@ from db import (
     create_project,
     create_task,
     create_user,
+    get_benchmark_run,
     get_project,
     get_task,
     get_run_with_outputs_for_owner,
@@ -21,10 +22,12 @@ from db import (
     get_user_by_id,
     get_user_by_username,
     initialize_database,
+    list_benchmark_runs,
     list_project_runs,
     list_project_tasks,
     list_projects,
 )
+from evaluation import BENCHMARK_TASKS, benchmark_summary, run_benchmark
 from orchestrator import run_project_workflow, run_task_workflow
 from security import (
     DEFAULT_ADMIN_PASSWORD,
@@ -59,6 +62,10 @@ class TaskRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     requirement: str
+
+
+class BenchmarkRunRequest(BaseModel):
+    limit: int | None = None
 
 
 app = FastAPI(
@@ -118,6 +125,7 @@ def health_check():
             "reviewer_agent",
             "tester_agent",
             "execution_sandbox",
+            "benchmark_evaluation",
             "database",
         ],
     }
@@ -270,3 +278,39 @@ def generate_project(request: GenerateRequest, user=Depends(current_user)):
     project_id = create_project(user["id"], "Untitled project", requirement)
     project = get_project(project_id, user["id"])
     return run_project_workflow(project)
+
+
+@app.get("/benchmarks/tasks")
+def benchmark_tasks(user=Depends(current_user)):
+    return {"tasks": BENCHMARK_TASKS}
+
+
+@app.get("/benchmarks")
+def benchmarks(user=Depends(current_user)):
+    return {"benchmarks": list_benchmark_runs(user["id"])}
+
+
+@app.post("/benchmarks/runs")
+def create_benchmark(request: BenchmarkRunRequest, user=Depends(current_user)):
+    limit = request.limit
+    if limit is not None and limit < 1:
+        raise HTTPException(status_code=400, detail="Benchmark limit must be at least 1.")
+    if limit is not None and limit > len(BENCHMARK_TASKS):
+        raise HTTPException(status_code=400, detail=f"Benchmark limit must be {len(BENCHMARK_TASKS)} or fewer.")
+
+    benchmark_run = run_benchmark(user["id"], limit=limit)
+    return {
+        "benchmark": benchmark_run,
+        "summary": benchmark_summary(benchmark_run),
+    }
+
+
+@app.get("/benchmarks/runs/{benchmark_run_id}")
+def benchmark_detail(benchmark_run_id: int, user=Depends(current_user)):
+    benchmark_run = get_benchmark_run(benchmark_run_id, user["id"])
+    if not benchmark_run:
+        raise HTTPException(status_code=404, detail="Benchmark run not found.")
+    return {
+        "benchmark": benchmark_run,
+        "summary": benchmark_summary(benchmark_run),
+    }
