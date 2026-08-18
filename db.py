@@ -244,6 +244,49 @@ class AgentOutput(Base):
     run: Mapped["Run"] = relationship(back_populates="agent_outputs")
 
 
+class BenchmarkRun(Base):
+    __tablename__ = "benchmark_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="running")
+    total_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tests_passing_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    reviewer_approval_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    average_iterations: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    average_latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    average_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    average_correctness_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    results: Mapped[list["BenchmarkResult"]] = relationship(back_populates="benchmark_run", cascade="all, delete-orphan")
+
+
+class BenchmarkResult(Base):
+    __tablename__ = "benchmark_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    benchmark_run_id: Mapped[int] = mapped_column(ForeignKey("benchmark_runs.id"), nullable=False, index=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), index=True)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    requirement: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    correctness_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    tests_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    reviewer_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    iterations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    error: Mapped[str | None] = mapped_column(Text)
+    metrics: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+
+    benchmark_run: Mapped["BenchmarkRun"] = relationship(back_populates="results")
+
+
 def _engine_kwargs():
     if DATABASE_URL.startswith("sqlite"):
         return {"connect_args": {"check_same_thread": False}}
@@ -592,6 +635,112 @@ def update_run(run_id, status, final_output=None, error=None):
 def save_agent_output(run_id, agent_name, output):
     with get_session() as session:
         session.add(AgentOutput(run_id=run_id, agent_name=agent_name, output=output))
+
+
+def create_benchmark_run(owner_id, total_tasks):
+    with get_session() as session:
+        benchmark_run = BenchmarkRun(owner_id=owner_id, total_tasks=total_tasks, status="running")
+        session.add(benchmark_run)
+        session.flush()
+        return benchmark_run.id
+
+
+def save_benchmark_result(
+    benchmark_run_id,
+    name,
+    requirement,
+    status,
+    correctness_score=0.0,
+    tests_passed=False,
+    reviewer_approved=False,
+    iterations=0,
+    latency_ms=0,
+    cost_usd=0.0,
+    error=None,
+    metrics=None,
+    project_id=None,
+    task_id=None,
+):
+    with get_session() as session:
+        session.add(
+            BenchmarkResult(
+                benchmark_run_id=benchmark_run_id,
+                project_id=project_id,
+                task_id=task_id,
+                name=name,
+                requirement=requirement,
+                status=status,
+                correctness_score=correctness_score or 0.0,
+                tests_passed=bool(tests_passed),
+                reviewer_approved=bool(reviewer_approved),
+                iterations=iterations or 0,
+                latency_ms=latency_ms or 0,
+                cost_usd=cost_usd or 0.0,
+                error=error,
+                metrics=metrics or {},
+            )
+        )
+
+
+def complete_benchmark_run(benchmark_run_id, status="completed"):
+    with get_session() as session:
+        benchmark_run = session.get(BenchmarkRun, benchmark_run_id)
+        if not benchmark_run:
+            return None
+
+        results = session.scalars(
+            select(BenchmarkResult).where(BenchmarkResult.benchmark_run_id == benchmark_run_id)
+        ).all()
+        total = len(results)
+        completed = [result for result in results if result.status == "completed"]
+
+        benchmark_run.status = status
+        benchmark_run.completed_tasks = len(completed)
+        benchmark_run.completed_at = utc_now()
+        if total:
+            benchmark_run.tests_passing_rate = sum(1 for result in results if result.tests_passed) / total
+            benchmark_run.reviewer_approval_rate = sum(1 for result in results if result.reviewer_approved) / total
+            benchmark_run.average_iterations = sum(result.iterations for result in results) / total
+            benchmark_run.average_latency_ms = sum(result.latency_ms for result in results) / total
+            benchmark_run.average_cost_usd = sum(result.cost_usd for result in results) / total
+            benchmark_run.average_correctness_score = sum(result.correctness_score for result in results) / total
+
+        session.flush()
+        return _as_dict(benchmark_run)
+
+
+def _benchmark_with_results(benchmark_run, results):
+    data = _as_dict(benchmark_run)
+    data["results"] = [_as_dict(result) for result in results]
+    return data
+
+
+def list_benchmark_runs(owner_id):
+    with get_session() as session:
+        benchmark_runs = session.scalars(
+            select(BenchmarkRun)
+            .where(BenchmarkRun.owner_id == owner_id)
+            .order_by(BenchmarkRun.id.desc())
+        ).all()
+        return [_as_dict(benchmark_run) for benchmark_run in benchmark_runs]
+
+
+def get_benchmark_run(benchmark_run_id, owner_id):
+    with get_session() as session:
+        benchmark_run = session.scalar(
+            select(BenchmarkRun).where(
+                BenchmarkRun.id == benchmark_run_id,
+                BenchmarkRun.owner_id == owner_id,
+            )
+        )
+        if not benchmark_run:
+            return None
+        results = session.scalars(
+            select(BenchmarkResult)
+            .where(BenchmarkResult.benchmark_run_id == benchmark_run_id)
+            .order_by(BenchmarkResult.id.asc())
+        ).all()
+        return _benchmark_with_results(benchmark_run, results)
 
 
 def list_project_runs(project_id):
