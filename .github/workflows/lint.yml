@@ -1,12 +1,13 @@
 name: Lint
 
-on:
+'on':
   push:
     branches:
       - main
       - master
   pull_request:
 
+    null
 jobs:
   python-lint:
     name: Python lint
@@ -19,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
           cache: pip
 
       - name: Install lint tools
@@ -29,7 +30,8 @@ jobs:
         run: ruff check . --select E9,F63,F7,F82
 
       - name: Python syntax check
-        run: python -m compileall -q api.py db.py evaluation.py orchestrator.py agents sandbox.py
+        run: python -m compileall -q api.py db.py evaluation.py orchestrator.py agents
+          sandbox.py
 
   frontend-lint:
     name: Frontend dependency check
@@ -46,7 +48,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
           cache: npm
           cache-dependency-path: ui/frontend/package-lock.json
 

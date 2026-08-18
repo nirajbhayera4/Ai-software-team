@@ -13,7 +13,7 @@ env:
   LLM_API_KEY: test-key
   LLM_MAX_RETRIES: "0"
   SANDBOX_ENABLED: "false"
-  APP_SECRET_KEY: ci-secret
+  JWT_SECRET: ci-secret
 
 jobs:
   unit-tests:

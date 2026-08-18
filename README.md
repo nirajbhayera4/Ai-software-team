@@ -187,13 +187,13 @@ SANDBOX_ALLOW_NETWORK=false
 Authentication configuration:
 
 ```env
-APP_SECRET_KEY=replace-with-a-long-random-secret
+JWT_SECRET=replace-with-a-long-random-secret
 APP_ADMIN_USERNAME=admin
-APP_ADMIN_PASSWORD=password
+APP_ADMIN_PASSWORD=replace-with-a-local-dev-password
 ```
 
 The default admin credentials are for local development only. Set a strong
-`APP_SECRET_KEY` and admin password outside local demos.
+`JWT_SECRET` and admin password outside local demos.
 
 ## Run
 
@@ -338,7 +338,9 @@ If GitHub rejects a push because it detected a secret in history, remove the
 secret from all commits before pushing again.
 
 - Do not keep real API keys in tracked commits.
-- Use `.env.example` for template values.
+- Keep real `OPENAI_API_KEY`, `LLM_API_KEY`, `DATABASE_URL`, `JWT_SECRET`, and deployment credentials in environment variables or GitHub Secrets.
+- Keep `.env` local only. It is ignored by Git; use `.env.example` for template values.
+- Do not commit private keys such as SSH keys, `.pem`, or `.key` files.
 - If you need to push, generate a GitHub personal access token (PAT) and use it
   instead of a password.
 

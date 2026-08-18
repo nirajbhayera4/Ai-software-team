@@ -7,9 +7,15 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 
-SECRET_KEY = os.getenv("APP_SECRET_KEY", "development-secret-change-me")
+SECRET_KEY = os.getenv("JWT_SECRET") or os.getenv("APP_SECRET_KEY")
 DEFAULT_ADMIN_USERNAME = os.getenv("APP_ADMIN_USERNAME", "admin")
 DEFAULT_ADMIN_PASSWORD = os.getenv("APP_ADMIN_PASSWORD", "password")
+
+
+def get_secret_key():
+    if not SECRET_KEY:
+        raise RuntimeError("Missing JWT_SECRET. Set JWT_SECRET in your environment or .env file.")
+    return SECRET_KEY
 
 
 def hash_password(password):
@@ -51,7 +57,7 @@ def create_access_token(user_id, username):
     }
     encoded_payload = _b64encode(json.dumps(payload).encode("utf-8"))
     signature = hmac.new(
-        SECRET_KEY.encode("utf-8"),
+        get_secret_key().encode("utf-8"),
         encoded_payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
@@ -65,7 +71,7 @@ def decode_access_token(token):
         return None
 
     expected_signature = hmac.new(
-        SECRET_KEY.encode("utf-8"),
+        get_secret_key().encode("utf-8"),
         encoded_payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
