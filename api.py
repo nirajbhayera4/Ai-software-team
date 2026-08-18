@@ -1,7 +1,9 @@
 import sys
+import time
+import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -28,6 +30,7 @@ from db import (
     list_projects,
 )
 from evaluation import BENCHMARK_TASKS, benchmark_summary, run_benchmark
+from logging_config import get_logger, reset_request_id, set_request_id
 from orchestrator import run_project_workflow, run_task_workflow
 from security import (
     DEFAULT_ADMIN_PASSWORD,
@@ -37,6 +40,9 @@ from security import (
     hash_password,
     verify_password,
 )
+
+
+logger = get_logger(__name__)
 
 
 class LoginRequest(BaseModel):
@@ -81,6 +87,58 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    token = set_request_id(request_id)
+    started = time.perf_counter()
+    logger.info(
+        "request started",
+        extra={
+            "request_id": request_id,
+            "event": "request_started",
+            "method": request.method,
+            "path": request.url.path,
+        },
+    )
+
+    try:
+        response = await call_next(request)
+    except Exception as error:
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.exception(
+            "request failed",
+            extra={
+                "request_id": request_id,
+                "event": "request_failed",
+                "method": request.method,
+                "path": request.url.path,
+                "duration_ms": duration_ms,
+                "status": "failed",
+                "error": str(error),
+            },
+        )
+        reset_request_id(token)
+        raise
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    response.headers["x-request-id"] = request_id
+    logger.info(
+        "request completed",
+        extra={
+            "request_id": request_id,
+            "event": "request_completed",
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+            "status": "completed" if response.status_code < 500 else "failed",
+        },
+    )
+    reset_request_id(token)
+    return response
 
 
 @app.on_event("startup")
