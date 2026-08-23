@@ -1,6 +1,7 @@
 import time
 
 from agents.developer import developer
+from agents.llm import describe_llm_error, validate_llm_configuration
 from agents.manager import manager
 from agents.reviewer import reviewer
 from agents.tester import tester
@@ -26,7 +27,7 @@ logger = get_logger(__name__)
 
 
 def agent_fallback(agent_name, error):
-    error_text = str(error)
+    error_text = describe_llm_error(error)
     base = {
         "_fallback": True,
         "_error_type": "agent_failure",
@@ -92,6 +93,7 @@ def agent_fallback(agent_name, error):
 
 
 def run_task_workflow(project, task):
+    validate_llm_configuration()
     workflow_started = time.perf_counter()
     logger.info(
         "task workflow started",
@@ -150,12 +152,13 @@ def run_task_workflow(project, task):
                 state.update(update)
             except Exception as error:
                 duration_ms = int((time.perf_counter() - agent_started) * 1000)
+                error_text = describe_llm_error(error)
                 fallback = agent_fallback(agent_name, error)
                 state[output_key] = fallback
                 state["workflow_errors"].append(
-                    {"agent": agent_name, "error_type": "agent_failure", "error": str(error)}
+                    {"agent": agent_name, "error_type": "agent_failure", "error": error_text}
                 )
-                update_agent_run(agent_run_id, "failed", fallback, error=str(error))
+                update_agent_run(agent_run_id, "failed", fallback, error=error_text)
                 logger.exception(
                     "agent failed",
                     extra={
@@ -165,7 +168,7 @@ def run_task_workflow(project, task):
                         "agent": agent_name,
                         "duration_ms": duration_ms,
                         "status": "failed",
-                        "error": str(error),
+                        "error": error_text,
                     },
                 )
             else:

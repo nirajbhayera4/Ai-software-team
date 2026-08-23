@@ -32,6 +32,7 @@ from db import (
     list_project_tasks,
     list_projects,
 )
+from agents.llm import describe_llm_error
 from evaluation import BENCHMARK_TASKS, benchmark_summary, run_benchmark
 from logging_config import get_logger, reset_request_id, set_request_id
 from orchestrator import run_project_workflow, run_task_workflow
@@ -317,7 +318,7 @@ def run_task(task_id: int, user=Depends(current_user)):
     try:
         result = run_task_workflow(project, task)
     except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error))
+        raise HTTPException(status_code=500, detail=describe_llm_error(error))
 
     return result
 
@@ -331,7 +332,7 @@ def run_project(project_id: int, user=Depends(current_user)):
     try:
         result = run_project_workflow(project)
     except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error))
+        raise HTTPException(status_code=500, detail=describe_llm_error(error))
 
     return result
 
@@ -360,7 +361,10 @@ def generate_project(request: GenerateRequest, user=Depends(current_user)):
 
     project_id = create_project(user["id"], "Untitled project", requirement)
     project = get_project(project_id, user["id"])
-    return run_project_workflow(project)
+    try:
+        return run_project_workflow(project)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=describe_llm_error(error))
 
 
 @app.get("/benchmarks/tasks")
@@ -381,7 +385,10 @@ def create_benchmark(request: BenchmarkRunRequest, user=Depends(current_user)):
     if limit is not None and limit > len(BENCHMARK_TASKS):
         raise HTTPException(status_code=400, detail=f"Benchmark limit must be {len(BENCHMARK_TASKS)} or fewer.")
 
-    benchmark_run = run_benchmark(user["id"], limit=limit)
+    try:
+        benchmark_run = run_benchmark(user["id"], limit=limit)
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=describe_llm_error(error))
     logger.info(
         "benchmark completed",
         extra={

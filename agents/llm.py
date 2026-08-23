@@ -10,6 +10,87 @@ from db import save_llm_call
 load_dotenv()
 
 
+PLACEHOLDER_API_KEY_MARKERS = (
+    "replace",
+    "your-api-key",
+    "your-openai-api-key",
+    "your-gemini-key",
+    "example",
+    "dummy",
+    "changeme",
+)
+
+
+class LLMConfigurationError(ValueError):
+    """Raised when the local LLM provider settings cannot be used."""
+
+
+def _looks_like_placeholder(value):
+    normalized = (value or "").strip().lower()
+    return any(marker in normalized for marker in PLACEHOLDER_API_KEY_MARKERS)
+
+
+def describe_llm_error(error):
+    error_name = error.__class__.__name__
+    error_text = str(error)
+    lower_text = error_text.lower()
+
+    if isinstance(error, LLMConfigurationError):
+        return error_text
+
+    if (
+        error_name == "AuthenticationError"
+        or "invalid_api_key" in lower_text
+        or "please pass a valid api key" in lower_text
+    ):
+        return (
+            "The configured LLM API key is invalid. Replace LLM_API_KEY or "
+            "OPENAI_API_KEY in your .env file with a valid key for the selected provider."
+        )
+
+    if error_name == "RateLimitError" or "insufficient_quota" in lower_text:
+        return (
+            "The configured LLM API key has no remaining quota. Add billing/quota "
+            "to that account or set a different LLM_API_KEY or OPENAI_API_KEY."
+        )
+
+    if error_name.endswith("OpenAIError") or "OpenAI" in error_name:
+        return f"LLM provider API error: {error_text}"
+
+    return f"Something went wrong while calling the LLM provider: {error_text}"
+
+
+def validate_llm_configuration():
+    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+    if provider == "ollama":
+        return
+
+    api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+    google_providers = {"gemini", "genai", "google"}
+    supported_providers = {"openai", "openai-compatible", *google_providers}
+
+    if provider not in supported_providers:
+        raise LLMConfigurationError(
+            "Unsupported LLM_PROVIDER. Use openai, openai-compatible, gemini, genai, google, or ollama."
+        )
+
+    if not api_key:
+        raise LLMConfigurationError(
+            "Missing API key. Set LLM_API_KEY or OPENAI_API_KEY in your .env file."
+        )
+
+    if _looks_like_placeholder(api_key):
+        raise LLMConfigurationError(
+            "LLM_API_KEY is still a placeholder. Replace it with a real API key for the selected provider."
+        )
+
+    if provider in {"openai-compatible", *google_providers} and not base_url:
+        raise LLMConfigurationError(
+            "Missing base URL. Set LLM_BASE_URL for OpenAI-compatible or Gemini/GenAI providers."
+        )
+
+
 def create_chat_model(temperature=0.2):
     provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
     model = os.getenv("LLM_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
@@ -22,27 +103,11 @@ def create_chat_model(temperature=0.2):
             temperature=temperature,
         )
 
+    validate_llm_configuration()
+
     api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL")
     api_version = os.getenv("LLM_API_VERSION") or os.getenv("OPENAI_API_VERSION")
-
-    if not api_key:
-        raise ValueError(
-            "Missing API key. Set LLM_API_KEY or OPENAI_API_KEY in your .env file."
-        )
-
-    google_providers = {"gemini", "genai", "google"}
-    supported_providers = {"openai", "openai-compatible", *google_providers}
-
-    if provider in {"openai-compatible", *google_providers} and not base_url:
-        raise ValueError(
-            "Missing base URL. Set LLM_BASE_URL for OpenAI-compatible or Gemini/GenAI providers."
-        )
-
-    if provider not in supported_providers:
-        raise ValueError(
-            "Unsupported LLM_PROVIDER. Use openai, openai-compatible, gemini, genai, google, or ollama."
-        )
 
     if api_version:
         os.environ["OPENAI_API_VERSION"] = api_version
@@ -112,6 +177,10 @@ def _retry_settings():
 def _error_kind(error):
     name = error.__class__.__name__.lower()
     message = str(error).lower()
+    if isinstance(error, LLMConfigurationError):
+        return "configuration"
+    if "authentication" in name or "invalid_api_key" in message or "valid api key" in message:
+        return "authentication"
     if "timeout" in name or "timeout" in message or "timed out" in message:
         return "timeout"
     if "ratelimit" in name or "rate limit" in message or "429" in message:
@@ -119,6 +188,10 @@ def _error_kind(error):
     if "connection" in name or "unavailable" in message or "503" in message:
         return "api_unavailable"
     return "api_error"
+
+
+def _should_retry(error):
+    return _error_kind(error) not in {"configuration", "authentication"}
 
 
 def invoke_agent_llm(agent_name, messages, temperature=0.2, task_id=None, agent_run_id=None):
@@ -152,7 +225,7 @@ def invoke_agent_llm(agent_name, messages, temperature=0.2, task_id=None, agent_
             latency_ms = int((time.perf_counter() - started) * 1000)
             if not input_tokens:
                 input_tokens = max(0, len(_message_text(messages)) // 4)
-            is_final_attempt = attempt >= max_retries
+            is_final_attempt = attempt >= max_retries or not _should_retry(error)
             status = "failed" if is_final_attempt else "retrying"
             save_llm_call(
                 agent_name=agent_name,
@@ -162,10 +235,12 @@ def invoke_agent_llm(agent_name, messages, temperature=0.2, task_id=None, agent_
                 latency_ms=latency_ms,
                 cost_usd=_cost_usd(input_tokens, output_tokens),
                 status=status,
-                error=f"{_error_kind(error)} on attempt {attempt + 1}/{max_retries + 1}: {error}",
+                error=f"{_error_kind(error)} on attempt {attempt + 1}/{max_retries + 1}: {describe_llm_error(error)}",
                 task_id=task_id,
                 agent_run_id=agent_run_id,
             )
+            if is_final_attempt:
+                break
             if not is_final_attempt and base_delay:
                 time.sleep(base_delay * (2 ** attempt))
 

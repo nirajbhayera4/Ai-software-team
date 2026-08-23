@@ -10,25 +10,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from agents.llm import describe_llm_error
+
 
 def describe_generation_error(error):
     error_name = error.__class__.__name__
     error_text = str(error)
 
-    if error_name == "RateLimitError" or "insufficient_quota" in error_text:
-        return (
-            "OpenAI quota was exceeded for the configured API key. "
-            "Add billing/quota to that account or set a different OPENAI_API_KEY."
-        )
-
-    if error_name == "AuthenticationError" or "invalid_api_key" in error_text:
-        return (
-            "The configured API key is invalid. Replace LLM_API_KEY or "
-            "OPENAI_API_KEY in your .env file with a valid provider key."
-        )
-
-    if error_name.endswith("OpenAIError") or "OpenAI" in error_name:
-        return f"OpenAI API error: {error_text}"
+    if (
+        error_name in {"LLMConfigurationError", "AuthenticationError", "RateLimitError"}
+        or "invalid_api_key" in error_text
+        or "insufficient_quota" in error_text
+        or "Please pass a valid API key" in error_text
+        or error_name.endswith("OpenAIError")
+        or "OpenAI" in error_name
+    ):
+        return describe_llm_error(error)
 
     if error_name == "ModuleNotFoundError":
         if "No module named 'graph'" in error_text:
