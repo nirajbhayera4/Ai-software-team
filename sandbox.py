@@ -15,6 +15,22 @@ FILE_MARKER_PATTERN = re.compile(r"^=+\s*\n(.+?\.py)\s*\n=+\s*$", re.MULTILINE)
 logger = get_logger(__name__)
 
 
+def _docker_executable():
+    configured_path = os.getenv("DOCKER_CLI_PATH", "").strip()
+    if configured_path:
+        return configured_path
+    return shutil.which("docker") or "docker"
+
+
+def _docker_environment():
+    env = os.environ.copy()
+    docker_executable = _docker_executable()
+    docker_dir = Path(docker_executable).parent if docker_executable != "docker" else None
+    if docker_dir:
+        env["PATH"] = f"{docker_dir}{os.pathsep}{env.get('PATH', '')}"
+    return env
+
+
 def extract_python_code(generated_code):
     text = (generated_code or "").strip()
     matches = CODE_BLOCK_PATTERN.findall(text)
@@ -70,15 +86,17 @@ def _write_generated_files(workspace, code):
 
 
 def _docker_available():
-    if not shutil.which("docker"):
+    docker_executable = _docker_executable()
+    if docker_executable == "docker" and not shutil.which("docker"):
         return False
     try:
         completed = subprocess.run(
-            ["docker", "version", "--format", "{{.Server.Version}}"],
+            [docker_executable, "version", "--format", "{{.Server.Version}}"],
             text=True,
             capture_output=True,
             timeout=10,
             check=False,
+            env=_docker_environment(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -94,7 +112,13 @@ def _docker_command(workspace, files, has_requirements, has_tests):
     allow_network = os.getenv("SANDBOX_ALLOW_NETWORK", "false").strip().lower() == "true"
     network = "bridge" if allow_network else "none"
 
-    compile_commands = " && ".join(f"python -m py_compile {shlex.quote(name)}" for name in files)
+    syntax_check = (
+        'import ast,pathlib,sys; '
+        'ast.parse(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), filename=sys.argv[1])'
+    )
+    compile_commands = " && ".join(
+        f"python -c {shlex.quote(syntax_check)} {shlex.quote(name)}" for name in files
+    )
     install_command = ""
     if has_requirements:
         install_command = (
@@ -111,7 +135,7 @@ def _docker_command(workspace, files, has_requirements, has_tests):
     )
 
     return [
-        "docker",
+        _docker_executable(),
         "run",
         "--rm",
         "--network",
@@ -227,6 +251,7 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
                 capture_output=True,
                 timeout=timeout_seconds,
                 check=False,
+                env=_docker_environment(),
             )
         except subprocess.TimeoutExpired as error:
             logs = "\n".join(part for part in [error.stdout, error.stderr] if part)
