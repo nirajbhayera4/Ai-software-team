@@ -157,8 +157,11 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
         )
         return {
             "status": "skipped",
-            "summary": "Execution sandbox is disabled. Set SANDBOX_ENABLED=true to run generated code in a container.",
+            "summary": "Execution sandbox is disabled in configuration.",
             "logs": "",
+            "enabled": False,
+            "docker_available": _docker_available(),
+            "next_step": "Install/start Docker, then set SANDBOX_ENABLED=true to run generated code in a container.",
         }
 
     code = extract_python_code(generated_code)
@@ -193,6 +196,8 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
             "status": "failed",
             "summary": "Docker is unavailable, so generated code was not executed on the application server.",
             "logs": "Install/start Docker or set SANDBOX_ENABLED=false to skip execution checks.",
+            "enabled": True,
+            "docker_available": False,
             "test_plan_received": bool(test_plan),
             "isolation": "host execution refused",
         }
@@ -266,6 +271,8 @@ def run_execution_sandbox(generated_code, test_plan, dependencies=None, test_cod
         "status": status,
         "summary": summary,
         "logs": logs,
+        "enabled": True,
+        "docker_available": True,
         "test_plan_received": bool(test_plan),
         "dependencies_installed": bool(dependency_lines),
         "tests_executed": bool(executable_tests),

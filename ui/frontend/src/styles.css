@@ -237,6 +237,13 @@ pre {
   color: #fecaca;
 }
 
+.status-pill.skipped,
+.status-pill.idle {
+  border-color: #4b5563;
+  background: #25272d;
+  color: #d1d5db;
+}
+
 .dashboard-view,
 .stacked-view,
 .runs-view {
@@ -626,6 +633,11 @@ th {
   color: #fecaca;
 }
 
+.agent-step b.skipped {
+  background: #25272d;
+  color: #d1d5db;
+}
+
 .agent-step b.idle {
   background: #2a2c31;
   color: #aeb4be;
@@ -641,6 +653,36 @@ th {
   max-height: 260px;
   color: #d6d9de;
   font-size: 0.84rem;
+}
+
+.mini-status {
+  border: 1px solid #34373d;
+  border-radius: 999px;
+  color: #d1d5db;
+  font-size: 0.76rem;
+  font-weight: 800;
+  padding: 0.25rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.mini-status.passed,
+.mini-status.completed {
+  border-color: #357a5c;
+  background: #15352a;
+  color: #a7f3d0;
+}
+
+.mini-status.failed {
+  border-color: #8a3c3c;
+  background: #3b1f22;
+  color: #fecaca;
+}
+
+.mini-status.skipped,
+.mini-status.idle {
+  border-color: #4b5563;
+  background: #25272d;
+  color: #d1d5db;
 }
 
 .file-list {

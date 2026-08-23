@@ -550,6 +550,7 @@ function formatCost(value) {
 function statusMark(status) {
   if (status === 'completed' || status === 'passed') return 'OK'
   if (status === 'failed') return 'FAIL'
+  if (status === 'skipped') return 'SKIP'
   return '...'
 }
 
@@ -618,14 +619,17 @@ function FilesChanged({ files }) {
 }
 
 function TestsPanel({ testPlan, sandbox }) {
+  const sandboxStatus = sandbox?.status || 'idle'
+
   return (
     <section className="panel detail-panel">
       <div className="section-heading">
         <h2>Tests</h2>
-        <span>{sandbox?.status || 'idle'}</span>
+        <span className={`mini-status ${sandboxStatus}`}>{sandboxStatus}</span>
       </div>
       <pre>{testPlan && Object.keys(testPlan).length ? JSON.stringify(testPlan, null, 2) : 'No test plan yet.'}</pre>
       {sandbox?.summary && <p className="muted">{sandbox.summary}</p>}
+      {sandbox?.next_step && <p className="muted">{sandbox.next_step}</p>}
     </section>
   )
 }
